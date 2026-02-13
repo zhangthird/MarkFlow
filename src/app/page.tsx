@@ -320,7 +320,7 @@ export default function Home() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         {sidebarOpen && !focusMode && (
-          <Sidebar onOpenFolder={handleOpenFolder} />
+          <Sidebar />
         )}
 
         {/* Sidebar toggle button when closed */}
