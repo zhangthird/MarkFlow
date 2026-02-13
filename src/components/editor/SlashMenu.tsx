@@ -68,18 +68,15 @@ interface SlashMenuProps {
 const categoryConfig = {
   basic: { 
     label: 'Basic', 
-    icon: <Type className="w-3 h-3" />,
-    gradient: 'from-rose-500/10 to-orange-500/10'
+    icon: <Type className="w-3 h-3" />
   },
   block: { 
     label: 'Blocks', 
-    icon: <Sparkles className="w-3 h-3" />,
-    gradient: 'from-sky-500/10 to-purple-500/10'
+    icon: <Sparkles className="w-3 h-3" />
   },
   media: { 
     label: 'Media', 
-    icon: <FileImage className="w-3 h-3" />,
-    gradient: 'from-blue-500/10 to-pink-500/10'
+    icon: <FileImage className="w-3 h-3" />
   }
 }
 
@@ -189,11 +186,11 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
   return (
     <div
       ref={menuRef}
-      className="fixed z-[100] w-80 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl border border-border/50 bg-background/95 animate-in fade-in-0 zoom-in-95 duration-150"
+      className="fixed z-[100] w-72 overflow-hidden rounded-lg border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
       style={{ top: position.top, left: position.left }}
     >
       {/* Commands list with custom scrollbar */}
-      <div className="slash-menu-scroll max-h-[320px] overflow-y-auto py-1.5">
+      <div className="slash-menu-scroll max-h-[300px] overflow-y-auto py-1">
         {categories.map(category => {
           const commands = filteredCommands.filter(c => c.category === category)
           if (commands.length === 0) return null
@@ -203,9 +200,9 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
           return (
             <div key={category} className="mb-1">
               {/* Category header */}
-              <div className={`mx-2 px-2 py-1.5 rounded-md bg-gradient-to-r ${config.gradient} flex items-center gap-1.5 mb-1`}>
+              <div className="mx-2 mb-1 flex items-center gap-1.5 px-2 py-1">
                 <span className="text-muted-foreground">{config.icon}</span>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   {config.label}
                 </span>
               </div>
@@ -216,22 +213,23 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
                 const isSelected = globalIndex === effectiveSelectedIndex
                 
                 return (
-                  <div
+                  <button
                     key={cmd.id}
+                    type="button"
                     data-index={globalIndex}
-                    className={`mx-2 flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150 select-none ${
+                    className={`mx-2 flex w-[calc(100%-1rem)] items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors select-none ${
                       isSelected 
-                        ? 'bg-primary/10 border border-primary/20 shadow-sm' 
-                        : 'hover:bg-muted/50 border border-transparent'
+                        ? 'bg-accent text-accent-foreground' 
+                        : 'hover:bg-accent/50'
                     }`}
                     onClick={(e) => handleCommandClick(cmd, e)}
                     onMouseDown={(e) => e.preventDefault()}
                     onMouseEnter={() => setSelectedIndex(globalIndex)}
                   >
                     {/* Icon with color */}
-                    <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                    <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
                       isSelected 
-                        ? 'bg-primary/20' 
+                        ? 'bg-background/70' 
                         : 'bg-muted/50'
                     }`}>
                       <span className={cmd.color}>{cmd.icon}</span>
@@ -239,7 +237,7 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
                     
                     {/* Label and description */}
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-medium ${isSelected ? 'text-foreground' : 'text-foreground/90'}`}>
+                      <div className="text-sm font-medium">
                         {cmd.label}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
@@ -249,15 +247,15 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
                     
                     {/* Shortcut badge */}
                     {cmd.shortcut && (
-                      <div className={`flex-shrink-0 px-2 py-1 rounded text-[10px] font-mono transition-colors ${
+                      <div className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-mono transition-colors ${
                         isSelected 
-                          ? 'bg-primary/20 text-primary' 
+                          ? 'bg-background/80 text-foreground' 
                           : 'bg-muted/50 text-muted-foreground'
                       }`}>
                         {cmd.shortcut}
                       </div>
                     )}
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -266,7 +264,7 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
       </div>
       
       {/* Footer with keyboard hints */}
-      <div className="px-3 py-2 border-t border-border/50 bg-muted/30">
+      <div className="border-t border-border px-3 py-1.5">
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
@@ -287,107 +285,4 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
       </div>
     </div>
   )
-}
-
-// Hook for slash command detection
-export function useSlashCommand(
-  textarea: HTMLTextAreaElement | null,
-  onCommand: (insert: string) => void
-) {
-  const [showMenu, setShowMenu] = useState(false)
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
-  const [filter, setFilter] = useState('')
-  const slashStartPos = useRef<number | null>(null)
-  
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!textarea) return
-    
-    const value = textarea.value
-    const pos = textarea.selectionStart
-    
-    // Check for "/" trigger
-    if (e.key === '/' && !showMenu) {
-      // Check if we're at the start of a line or after whitespace
-      const beforeCursor = value.substring(0, pos)
-      const afterNewline = beforeCursor.substring(beforeCursor.lastIndexOf('\n') + 1)
-      
-      if (afterNewline.trim() === '' || afterNewline === '') {
-        // Show menu
-        slashStartPos.current = pos
-        setFilter('')
-        setShowMenu(true)
-        
-        // Calculate position
-        const rect = textarea.getBoundingClientRect()
-        const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 24
-        const lines = beforeCursor.split('\n')
-        const currentLine = lines.length
-        const charInLine = lines[lines.length - 1].length
-        
-        // Approximate position
-        setMenuPosition({
-          top: rect.top + (currentLine * lineHeight * 0.6) + 30,
-          left: rect.left + (charInLine * 8) + 20
-        })
-      }
-    }
-  }, [textarea, showMenu])
-  
-  const handleInput = useCallback(() => {
-    if (!textarea || !showMenu) return
-    
-    const pos = textarea.selectionStart
-    
-    // Check if we should close the menu
-    if (slashStartPos.current === null) {
-      setShowMenu(false)
-      return
-    }
-    
-    // Get text after slash
-    const textAfterSlash = textarea.value.substring(slashStartPos.current, pos)
-    
-    // Close if we moved before slash start or typed space
-    if (pos < slashStartPos.current || textAfterSlash.includes(' ')) {
-      setShowMenu(false)
-      slashStartPos.current = null
-      return
-    }
-    
-    // Update filter (remove the leading "/")
-    setFilter(textAfterSlash.substring(1))
-  }, [textarea, showMenu])
-  
-  const selectCommand = useCallback((cmd: SlashCommand) => {
-    if (!textarea || slashStartPos.current === null) return
-    
-    const pos = textarea.selectionStart
-    const before = textarea.value.substring(0, slashStartPos.current - 1) // Remove the "/"
-    const after = textarea.value.substring(pos)
-    
-    // Insert command text - just compute the new value
-    const newValue = before + cmd.insert + after
-    
-    // Close menu first
-    setShowMenu(false)
-    slashStartPos.current = null
-    
-    // Call callback with new value - parent will update the textarea
-    onCommand(newValue)
-  }, [textarea, onCommand])
-  
-  const closeMenu = useCallback(() => {
-    setShowMenu(false)
-    slashStartPos.current = null
-  }, [])
-  
-  return {
-    showMenu,
-    menuPosition,
-    filter,
-    handleKeyDown,
-    handleInput,
-    selectCommand,
-    closeMenu
-  }
 }
