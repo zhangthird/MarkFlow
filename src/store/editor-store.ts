@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Language, translations, TranslationKey } from '@/lib/i18n'
 
-export type FileType = 'markdown' | 'excalidraw'
+export type FileType = 'markdown' | 'excalidraw' | 'image' | 'text' | 'pdf' | 'binary'
 
 export interface FileNode {
   id: string
@@ -12,16 +12,37 @@ export interface FileNode {
   children?: FileNode[]
   content?: string // For markdown files
   excalidrawData?: string // JSON string for Excalidraw files
+  blobUrl?: string // For image/binary preview from File System Access API
+  mimeType?: string
   handle?: FileSystemFileHandle // For saving to actual file system
   isModified?: boolean
 }
 
 // Helper to detect file type from extension
 export function detectFileType(filename: string): FileType {
+  const lowerName = filename.toLowerCase()
+
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(lowerName)) {
+    return 'image'
+  }
+
+  if (/\.pdf$/i.test(lowerName)) {
+    return 'pdf'
+  }
+
   if (filename.endsWith('.excalidraw') || filename.endsWith('.excalidraw.json')) {
     return 'excalidraw'
   }
-  return 'markdown'
+
+  if (/\.(md|markdown)$/i.test(lowerName)) {
+    return 'markdown'
+  }
+
+  if (/\.(txt|json|yml|yaml|xml|html?|css|scss|less|js|jsx|ts|tsx|py|java|go|rs|c|cpp|h|hpp|sh|sql|toml|ini|conf)$/i.test(lowerName)) {
+    return 'text'
+  }
+
+  return 'binary'
 }
 
 interface SearchState {
@@ -348,7 +369,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       type,
       fileType: type === 'file' ? fileType : undefined,
       path: parentPath === '/' ? `/${name}` : `${parentPath}/${name}`,
-      content: type === 'file' && fileType === 'markdown' ? `# ${name.replace(/\.md$/, '')}\n\n` : undefined,
+      content: type === 'file' && (fileType === 'markdown' || fileType === 'text') ? `# ${name.replace(/\.md$/, '')}\n\n` : undefined,
       excalidrawData: type === 'file' && fileType === 'excalidraw' ? defaultExcalidrawData : undefined,
       children: type === 'folder' ? [] : undefined,
       isModified: false
