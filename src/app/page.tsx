@@ -13,6 +13,46 @@ import { toast } from 'sonner'
 
 // Dynamically import ExcalidrawEditor to avoid SSR issues
 import dynamic from 'next/dynamic'
+
+const PERSIST_DB_NAME = 'markflow-persistence'
+const PERSIST_STORE = 'kv'
+const ROOT_HANDLE_KEY = 'root-directory-handle'
+const LAST_FILE_PATH_KEY = 'last-open-file-path'
+
+async function getPersistDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(PERSIST_DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      if (!db.objectStoreNames.contains(PERSIST_STORE)) {
+        db.createObjectStore(PERSIST_STORE)
+      }
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function idbSet<T>(key: string, value: T): Promise<void> {
+  const db = await getPersistDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(PERSIST_STORE, 'readwrite')
+    tx.objectStore(PERSIST_STORE).put(value, key)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+async function idbGet<T>(key: string): Promise<T | null> {
+  const db = await getPersistDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PERSIST_STORE, 'readonly')
+    const request = tx.objectStore(PERSIST_STORE).get(key)
+    request.onsuccess = () => resolve((request.result as T | undefined) ?? null)
+    request.onerror = () => reject(request.error)
+  })
+}
+
 const ExcalidrawEditor = dynamic(
   () => import('@/components/editor/ExcalidrawEditor').then(mod => ({ default: mod.ExcalidrawEditor })),
   { 
@@ -77,6 +117,91 @@ export default function Home() {
     }
   }, [setTheme, setLanguage])
 
+  // Helper to find first file in tree
+  const findFirstFile = useCallback((nodes: FileNode[]): FileNode | null => {
+    for (const node of nodes) {
+      if (node.type === 'file') return node
+      if (node.children) {
+        const found = findFirstFile(node.children)
+        if (found) return found
+      }
+    }
+    return null
+  }, [])
+
+  const findFileByPath = useCallback((nodes: FileNode[], path: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.type === 'file' && node.path === path) return node
+      if (node.children) {
+        const found = findFileByPath(node.children, path)
+        if (found) return found
+      }
+    }
+    return null
+  }, [])
+
+  const loadDirectory = useCallback(async (dirHandle: FileSystemDirectoryHandle) => {
+    setRootHandle(dirHandle)
+
+    const buildTree = async (
+      handle: FileSystemDirectoryHandle,
+      path: string = ''
+    ): Promise<FileNode[]> => {
+      const nodes: FileNode[] = []
+
+      for await (const entry of handle.values()) {
+        const entryPath = path ? `${path}/${entry.name}` : entry.name
+
+        if (entry.kind === 'directory') {
+          const children = await buildTree(entry, entryPath)
+          nodes.push({
+            id: entryPath,
+            name: entry.name,
+            type: 'folder',
+            path: `/${entryPath}`,
+            children
+          })
+        } else if (entry.kind === 'file') {
+          const file = await entry.getFile()
+          const fileType = detectFileType(entry.name)
+          const isReadableText = fileType === 'markdown' || fileType === 'text' || fileType === 'excalidraw'
+          const fileContent = isReadableText ? await file.text() : undefined
+            const blobUrl = fileType === 'image' || fileType === 'pdf' ? URL.createObjectURL(file) : undefined
+
+          nodes.push({
+            id: entryPath,
+            name: entry.name,
+            type: 'file',
+            fileType,
+            path: `/${entryPath}`,
+            content: fileType === 'markdown' || fileType === 'text' ? fileContent : undefined,
+            excalidrawData: fileType === 'excalidraw' ? fileContent : undefined,
+            blobUrl,
+            mimeType: file.type,
+            handle: entry,
+            isModified: false
+          })
+        }
+      }
+
+      return nodes.sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === 'folder' ? -1 : 1
+        }
+        return a.name.localeCompare(b.name)
+      })
+    }
+
+    const files = await buildTree(dirHandle)
+    setFiles(files)
+    setRootFolderName(dirHandle.name)
+
+    const lastPath = localStorage.getItem(LAST_FILE_PATH_KEY)
+    const initialFile = lastPath ? findFileByPath(files, lastPath) : null
+    const fallbackFile = initialFile ?? findFirstFile(files)
+    if (fallbackFile) setCurrentFile(fallbackFile)
+  }, [findFileByPath, findFirstFile, setCurrentFile, setFiles, setRootFolderName, setRootHandle])
+
   // Handle folder opening using File System Access API
   const handleOpenFolder = useCallback(async () => {
     if (!('showDirectoryPicker' in window)) {
@@ -86,67 +211,8 @@ export default function Home() {
 
     try {
       const dirHandle = await (window as Window & { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker()
-      
-      // Store the directory handle for saving
-      setRootHandle(dirHandle)
-      
-      // Build file tree with file handles
-      const buildTree = async (
-        handle: FileSystemDirectoryHandle, 
-        path: string = ''
-      ): Promise<FileNode[]> => {
-        const nodes: FileNode[] = []
-        
-        for await (const entry of handle.values()) {
-          const entryPath = path ? `${path}/${entry.name}` : entry.name
-          
-          if (entry.kind === 'directory') {
-            const children = await buildTree(entry, entryPath)
-            nodes.push({
-              id: entryPath,
-              name: entry.name,
-              type: 'folder',
-              path: `/${entryPath}`,
-              children
-            })
-          } else if (entry.kind === 'file' && (entry.name.endsWith('.md') || entry.name.endsWith('.txt') || entry.name.endsWith('.excalidraw') || entry.name.endsWith('.excalidraw.json'))) {
-            // Read file content
-            const file = await entry.getFile()
-            const fileContent = await file.text()
-            const fileType = detectFileType(entry.name)
-            
-            nodes.push({
-              id: entryPath,
-              name: entry.name,
-              type: 'file',
-              fileType,
-              path: `/${entryPath}`,
-              content: fileType === 'markdown' ? fileContent : undefined,
-              excalidrawData: fileType === 'excalidraw' ? fileContent : undefined,
-              handle: entry, // Store the file handle for saving
-              isModified: false
-            })
-          }
-        }
-        
-        // Sort: folders first, then files, alphabetically
-        return nodes.sort((a, b) => {
-          if (a.type !== b.type) {
-            return a.type === 'folder' ? -1 : 1
-          }
-          return a.name.localeCompare(b.name)
-        })
-      }
-      
-      const files = await buildTree(dirHandle)
-      setFiles(files)
-      setRootFolderName(dirHandle.name)
-      
-      // Select first file if exists
-      const firstFile = findFirstFile(files)
-      if (firstFile) {
-        setCurrentFile(firstFile)
-      }
+      await loadDirectory(dirHandle)
+      await idbSet(ROOT_HANDLE_KEY, dirHandle)
       
       toast.success(`${t('folderOpened')}: ${dirHandle.name}`)
     } catch (err) {
@@ -155,24 +221,45 @@ export default function Home() {
         console.error(err)
       }
     }
-  }, [setFiles, setRootFolderName, setCurrentFile, setRootHandle, t])
-
-  // Helper to find first file in tree
-  const findFirstFile = (nodes: FileNode[]): FileNode | null => {
-    for (const node of nodes) {
-      if (node.type === 'file') return node
-      if (node.children) {
-        const found = findFirstFile(node.children)
-        if (found) return found
-      }
-    }
-    return null
-  }
+  }, [loadDirectory, t])
 
   // Handle content change
   const handleContentChange = useCallback((newContent: string) => {
     updateCurrentFileContent(newContent)
   }, [updateCurrentFileContent])
+
+  const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
+
+  useEffect(() => {
+    if (currentFile?.path) {
+      localStorage.setItem(LAST_FILE_PATH_KEY, currentFile.path)
+    }
+  }, [currentFile?.path])
+
+  useEffect(() => {
+    const restore = async () => {
+      if (!('showDirectoryPicker' in window)) return
+      try {
+        const savedHandle = await idbGet<FileSystemDirectoryHandle>(ROOT_HANDLE_KEY)
+        if (!savedHandle) return
+
+        let permission = await savedHandle.queryPermission({ mode: 'readwrite' })
+        if (permission !== 'granted') {
+          permission = await savedHandle.requestPermission({ mode: 'readwrite' })
+        }
+        if (permission !== 'granted') {
+          toast.info(language === 'zh' ? '已检测到上次目录，请点击“打开”重新授权。' : 'Previous folder detected. Click "Open" to re-authorize access.')
+          return
+        }
+
+        await loadDirectory(savedHandle)
+      } catch (error) {
+        console.error('Failed to restore previous folder:', error)
+      }
+    }
+
+    void restore()
+  }, [language, loadDirectory])
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -233,7 +320,7 @@ export default function Home() {
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         {sidebarOpen && !focusMode && (
-          <Sidebar onOpenFolder={handleOpenFolder} />
+          <Sidebar />
         )}
 
         {/* Sidebar toggle button when closed */}
@@ -255,12 +342,46 @@ export default function Home() {
           {currentFile ? (
             currentFile.fileType === 'excalidraw' ? (
               <ExcalidrawEditor initialData={currentFile.excalidrawData} />
-            ) : (
+            ) : currentFile.fileType === 'pdf' ? (
+              <div className="flex-1 overflow-hidden bg-muted/20 p-4">
+                <div className="h-full rounded-xl border border-border bg-background shadow-sm overflow-hidden">
+                  <iframe
+                    src={currentFile.blobUrl}
+                    title={currentFile.name}
+                    className="h-full w-full"
+                  />
+                </div>
+              </div>
+            ) : currentFile.fileType === 'image' ? (
+              <div className="flex-1 overflow-auto bg-muted/20 p-6">
+                <div className="mx-auto w-full max-w-5xl rounded-xl border border-border bg-background p-4 shadow-sm">
+                  <img
+                    src={currentFile.blobUrl}
+                    alt={currentFile.name}
+                    className="mx-auto max-h-[75vh] w-auto max-w-full rounded-md object-contain"
+                  />
+                  <div className="mt-3 text-center text-xs text-muted-foreground">
+                    {currentFile.name}
+                  </div>
+                </div>
+              </div>
+            ) : isTextLikeFile ? (
               <TyporaEditor
                 ref={editorRef}
                 content={content}
                 onChange={handleContentChange}
               />
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-6">
+                <div className="max-w-md rounded-xl border border-border bg-card p-6 text-center">
+                  <div className="mb-2 text-lg font-semibold">{currentFile.name}</div>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'zh'
+                      ? '该文件类型暂不支持直接编辑，但已经可以在文件树中浏览与管理。'
+                      : 'This file type is not editable yet, but it is now visible and manageable in the file tree.'}
+                  </p>
+                </div>
+              </div>
             )
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -277,14 +398,14 @@ export default function Home() {
         </main>
         
         {/* Backlinks panel */}
-        {backlinksOpen && !focusMode && currentFile?.fileType !== 'excalidraw' && (
+        {backlinksOpen && !focusMode && isTextLikeFile && (
           <div className="w-64 border-l border-border bg-sidebar shrink-0">
             <BacklinksPanel onClose={() => setBacklinksOpen(false)} />
           </div>
         )}
         
         {/* Backlinks toggle button */}
-        {!backlinksOpen && !focusMode && currentFile?.fileType !== 'excalidraw' && (
+        {!backlinksOpen && !focusMode && isTextLikeFile && (
           <div className="absolute right-0 top-14 z-10">
             <Button
               variant="ghost"
@@ -303,13 +424,23 @@ export default function Home() {
       {!focusMode && (
         <footer className="h-6 border-t border-border bg-muted/50 px-4 flex items-center justify-between text-xs text-muted-foreground shrink-0">
           <div className="flex items-center gap-4">
-            <span>{currentFile?.fileType === 'excalidraw' ? 'Excalidraw' : t('markdown')}</span>
+            <span>
+              {currentFile?.fileType === 'excalidraw'
+                ? 'Excalidraw'
+                : currentFile?.fileType === 'image'
+                  ? (language === 'zh' ? '图片' : 'Image')
+                  : currentFile?.fileType === 'pdf'
+                    ? 'PDF'
+                  : currentFile?.fileType === 'binary'
+                    ? (language === 'zh' ? '二进制' : 'Binary')
+                    : t('markdown')}
+            </span>
             <span>{t('utf8')}</span>
             {currentFile?.isModified && (
               <span className="text-orange-500">{t('unsaved')}</span>
             )}
           </div>
-          {currentFile?.fileType !== 'excalidraw' && (
+          {isTextLikeFile && (
             <div className="flex items-center gap-4">
               <span>{content.split(/\s+/).filter(Boolean).length} {t('words')}</span>
               <span>{content.length} {t('characters')}</span>
