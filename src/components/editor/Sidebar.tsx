@@ -215,11 +215,7 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
   )
 }
 
-interface SidebarProps {
-  onOpenFolder: () => void
-}
-
-export function Sidebar({ onOpenFolder }: SidebarProps) {
+export function Sidebar() {
   const { 
     files, 
     sidebarOpen, 
@@ -313,15 +309,6 @@ export function Sidebar({ onOpenFolder }: SidebarProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={onOpenFolder}
-            >
-              <Folder className="w-3 h-3 mr-1" />
-              {openFolderLabel}
-            </Button>
           </div>
         </div>
 
