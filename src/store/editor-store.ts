@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { Language, translations, TranslationKey } from '@/lib/i18n'
 
-export type FileType = 'markdown' | 'excalidraw' | 'image' | 'text' | 'binary'
+export type FileType = 'markdown' | 'excalidraw' | 'image' | 'text' | 'pdf' | 'binary'
 
 export interface FileNode {
   id: string
@@ -24,6 +24,10 @@ export function detectFileType(filename: string): FileType {
 
   if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(lowerName)) {
     return 'image'
+  }
+
+  if (/\.pdf$/i.test(lowerName)) {
+    return 'pdf'
   }
 
   if (filename.endsWith('.excalidraw') || filename.endsWith('.excalidraw.json')) {

@@ -166,7 +166,7 @@ export default function Home() {
           const fileType = detectFileType(entry.name)
           const isReadableText = fileType === 'markdown' || fileType === 'text' || fileType === 'excalidraw'
           const fileContent = isReadableText ? await file.text() : undefined
-          const blobUrl = fileType === 'image' ? URL.createObjectURL(file) : undefined
+            const blobUrl = fileType === 'image' || fileType === 'pdf' ? URL.createObjectURL(file) : undefined
 
           nodes.push({
             id: entryPath,
@@ -247,7 +247,10 @@ export default function Home() {
         if (permission !== 'granted') {
           permission = await savedHandle.requestPermission({ mode: 'readwrite' })
         }
-        if (permission !== 'granted') return
+        if (permission !== 'granted') {
+          toast.info(language === 'zh' ? '已检测到上次目录，请点击“打开”重新授权。' : 'Previous folder detected. Click "Open" to re-authorize access.')
+          return
+        }
 
         await loadDirectory(savedHandle)
       } catch (error) {
@@ -256,7 +259,7 @@ export default function Home() {
     }
 
     void restore()
-  }, [loadDirectory])
+  }, [language, loadDirectory])
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -339,6 +342,16 @@ export default function Home() {
           {currentFile ? (
             currentFile.fileType === 'excalidraw' ? (
               <ExcalidrawEditor initialData={currentFile.excalidrawData} />
+            ) : currentFile.fileType === 'pdf' ? (
+              <div className="flex-1 overflow-hidden bg-muted/20 p-4">
+                <div className="h-full rounded-xl border border-border bg-background shadow-sm overflow-hidden">
+                  <iframe
+                    src={currentFile.blobUrl}
+                    title={currentFile.name}
+                    className="h-full w-full"
+                  />
+                </div>
+              </div>
             ) : currentFile.fileType === 'image' ? (
               <div className="flex-1 overflow-auto bg-muted/20 p-6">
                 <div className="mx-auto w-full max-w-5xl rounded-xl border border-border bg-background p-4 shadow-sm">
@@ -416,6 +429,8 @@ export default function Home() {
                 ? 'Excalidraw'
                 : currentFile?.fileType === 'image'
                   ? (language === 'zh' ? '图片' : 'Image')
+                  : currentFile?.fileType === 'pdf'
+                    ? 'PDF'
                   : currentFile?.fileType === 'binary'
                     ? (language === 'zh' ? '二进制' : 'Binary')
                     : t('markdown')}
