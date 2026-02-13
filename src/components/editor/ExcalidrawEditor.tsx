@@ -32,6 +32,7 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
   const isInitialLoad = useRef(true)
   const lastSavedData = useRef<string>('')
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const latestSceneRef = useRef<{ elements: readonly any[]; appState: any; files: any } | null>(null)
 
   // Dynamically import Excalidraw on client side only
   useEffect(() => {
@@ -109,11 +110,10 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
 
   // Internal save function
   const saveData = useCallback(() => {
-    if (!apiRef.current || isInitialLoad.current) return
+    if (!apiRef.current || isInitialLoad.current || !latestSceneRef.current) return
     
     try {
-      const elements = apiRef.current.getSceneElements()
-      const appState = apiRef.current.getAppState()
+      const { elements, appState, files } = latestSceneRef.current
       
       const data = JSON.stringify({
         type: 'excalidraw',
@@ -124,7 +124,7 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
           viewBackgroundColor: appState.viewBackgroundColor,
           gridSize: appState.gridSize,
         },
-        files: null
+        files: files || null
       })
       
       // Only update if data actually changed
@@ -138,7 +138,9 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
   }, [updateExcalidrawData])
 
   // Handle scene change - save to store with debounce
-  const handleChange = useCallback(() => {
+  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+    latestSceneRef.current = { elements, appState, files }
+
     // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
