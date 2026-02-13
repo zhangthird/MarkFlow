@@ -98,8 +98,16 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
     const withoutExtMap = new Map<string, FileNode>()
 
     for (const file of flatFiles) {
-      fullNameMap.set(normalizeFileName(file.name), file)
-      withoutExtMap.set(normalizeFileNameWithoutExt(file.name), file)
+      const normalizedFullName = normalizeFileName(file.name)
+      const normalizedWithoutExt = normalizeFileNameWithoutExt(file.name)
+
+      if (!fullNameMap.has(normalizedFullName)) {
+        fullNameMap.set(normalizedFullName, file)
+      }
+
+      if (!withoutExtMap.has(normalizedWithoutExt)) {
+        withoutExtMap.set(normalizedWithoutExt, file)
+      }
     }
 
     return { fullNameMap, withoutExtMap }
@@ -183,18 +191,18 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
-      <div className="border-b border-border p-3">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-            <Link className="h-4 w-4 text-primary" />
+    <div className="flex flex-col h-full">
+      <div className="p-3 border-b border-border">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="font-medium text-sm flex items-center gap-2">
+            <Link className="w-4 h-4" />
             {language === 'zh' ? '双向链接' : 'Backlinks'}
           </h3>
           {onClose && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              className="h-7 w-7"
               onClick={onClose}
               title={language === 'zh' ? '关闭双向链接面板' : 'Close backlinks panel'}
               aria-label={language === 'zh' ? '关闭双向链接面板' : 'Close backlinks panel'}
@@ -203,7 +211,6 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
             </Button>
           )}
         </div>
-
         <Input
           placeholder={language === 'zh' ? '搜索文件名或上下文...' : 'Search file name or context...'}
           value={searchQuery}
@@ -212,119 +219,106 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
         />
       </div>
 
-      <div className="sidebar-scrollbar flex-1 space-y-3 overflow-y-auto p-3">
-        <section className="rounded-md border border-border/70 bg-background/70">
-          <div className="flex items-center justify-between border-b border-border/70 px-3 py-2 text-xs text-muted-foreground">
-            <span>{language === 'zh' ? '引用此文件' : 'References to this file'}</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 font-medium">{backlinks.length}</span>
+      <div className="sidebar-scrollbar flex-1 overflow-y-auto">
+        <div className="p-3">
+          <div className="text-xs text-muted-foreground mb-2">
+            {language === 'zh' ? '引用此文件' : 'References to this file'} ({backlinks.length})
           </div>
 
-          <div className="p-2">
-            {Object.keys(groupedBacklinks).length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                {language === 'zh' ? '暂无反向链接' : 'No backlinks found'}
-              </div>
-            ) : (
-              Object.entries(groupedBacklinks).map(([path, links]) => {
-                const isExpanded = expandedFiles.has(path)
-                const firstLink = links[0]
+          {Object.keys(groupedBacklinks).length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-4">
+              {language === 'zh' ? '暂无反向链接' : 'No backlinks found'}
+            </div>
+          ) : (
+            Object.entries(groupedBacklinks).map(([path, links]) => {
+              const isExpanded = expandedFiles.has(path)
+              const firstLink = links[0]
 
-                return (
-                  <div key={path} className="mb-1 last:mb-0">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/60"
-                      onClick={() => toggleExpanded(path)}
-                    >
-                      {isExpanded ? (
-                        <ChevronDown className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-                      )}
-                      <FileText className="h-4 w-4 flex-shrink-0 text-blue-500" />
-                      <span className="truncate">{firstLink.sourceName}</span>
-                      <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {links.length}
-                      </span>
-                    </button>
-
-                    {isExpanded && (
-                      <div className="ml-5 mt-1 space-y-1 border-l border-border pl-2">
-                        {links.map((link, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent/40"
-                            onClick={() => {
-                              const file = findFileByName(link.sourceName)
-                              if (file) navigateToFile(file)
-                            }}
-                          >
-                            <div className="text-muted-foreground">Line {link.line}</div>
-                            <div className="mt-0.5 truncate text-foreground/80">
-                              {link.context.substring(0, 70)}
-                              {link.context.length > 70 && '...'}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+              return (
+                <div key={path} className="mb-1">
+                  <div
+                    className="flex items-center gap-2 p-2 rounded hover:bg-accent/50 cursor-pointer text-sm"
+                    onClick={() => toggleExpanded(path)}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 flex-shrink-0" />
                     )}
+                    <FileText className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                    <span className="truncate">{firstLink.sourceName}</span>
+                    <span className="text-xs text-muted-foreground ml-auto">{links.length}</span>
                   </div>
-                )
-              })
-            )}
-          </div>
-        </section>
 
-        <section className="rounded-md border border-border/70 bg-background/70">
-          <div className="flex items-center justify-between border-b border-border/70 px-3 py-2 text-xs text-muted-foreground">
-            <span>{language === 'zh' ? '此文件引用' : 'Links from this file'}</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 font-medium">{outgoingLinks.length}</span>
+                  {isExpanded && (
+                    <div className="ml-6 pl-2 border-l border-border">
+                      {links.map((link, idx) => (
+                        <div
+                          key={idx}
+                          className="text-xs p-2 rounded hover:bg-accent/30 cursor-pointer"
+                          onClick={() => {
+                            const file = findFileByName(link.sourceName)
+                            if (file) navigateToFile(file)
+                          }}
+                        >
+                          <div className="text-muted-foreground">Line {link.line}</div>
+                          <div className="truncate text-foreground/80 mt-0.5">
+                            {link.context.substring(0, 50)}
+                            {link.context.length > 50 && '...'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        <div className="p-3 border-t border-border">
+          <div className="text-xs text-muted-foreground mb-2">
+            {language === 'zh' ? '此文件引用' : 'Links from this file'} ({outgoingLinks.length})
           </div>
 
-          <div className="p-2">
-            {outgoingLinks.length === 0 ? (
-              <div className="py-4 text-center text-sm text-muted-foreground">
-                {language === 'zh' ? '无外链' : 'No outgoing links'}
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {outgoingLinks.map((link, idx) => {
-                  const targetFile = findFileByName(link.targetName)
-                  const exists = !!targetFile
+          {outgoingLinks.length === 0 ? (
+            <div className="text-sm text-muted-foreground text-center py-2">
+              {language === 'zh' ? '无外链' : 'No outgoing links'}
+            </div>
+          ) : (
+            outgoingLinks.map((link, idx) => {
+              const targetFile = findFileByName(link.targetName)
+              const exists = !!targetFile
 
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-                        exists ? 'hover:bg-accent/60' : 'opacity-60'
-                      }`}
-                      onClick={() => {
-                        if (targetFile) navigateToFile(targetFile)
-                      }}
-                    >
-                      <FileText
-                        className={`h-4 w-4 flex-shrink-0 ${
-                          exists ? 'text-blue-500' : 'text-muted-foreground'
-                        }`}
-                      />
-                      <span className="truncate">{link.targetName}</span>
-                      {!exists && (
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {language === 'zh' ? '未找到' : 'Not found'}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </section>
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-2 p-2 rounded text-sm ${
+                    exists ? 'hover:bg-accent/50 cursor-pointer' : 'opacity-50'
+                  }`}
+                  onClick={() => {
+                    if (targetFile) navigateToFile(targetFile)
+                  }}
+                >
+                  <FileText
+                    className={`w-4 h-4 flex-shrink-0 ${
+                      exists ? 'text-blue-500' : 'text-muted-foreground'
+                    }`}
+                  />
+                  <span className="truncate">{link.targetName}</span>
+                  {!exists && (
+                    <span className="text-xs text-muted-foreground">
+                      ({language === 'zh' ? '未找到' : 'not found'})
+                    </span>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
       </div>
 
-      <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+      <div className="p-2 border-t border-border text-xs text-muted-foreground text-center">
         {language === 'zh' ? '使用 [[文件名.md]] 创建链接' : 'Use [[filename.md]] to create links'}
       </div>
     </div>
