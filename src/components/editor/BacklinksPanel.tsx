@@ -98,8 +98,16 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
     const withoutExtMap = new Map<string, FileNode>()
 
     for (const file of flatFiles) {
-      fullNameMap.set(normalizeFileName(file.name), file)
-      withoutExtMap.set(normalizeFileNameWithoutExt(file.name), file)
+      const normalizedFullName = normalizeFileName(file.name)
+      const normalizedWithoutExt = normalizeFileNameWithoutExt(file.name)
+
+      if (!fullNameMap.has(normalizedFullName)) {
+        fullNameMap.set(normalizedFullName, file)
+      }
+
+      if (!withoutExtMap.has(normalizedWithoutExt)) {
+        withoutExtMap.set(normalizedWithoutExt, file)
+      }
     }
 
     return { fullNameMap, withoutExtMap }
@@ -204,10 +212,10 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
           )}
         </div>
         <Input
-          placeholder={language === 'zh' ? '搜索...' : 'Search...'}
+          placeholder={language === 'zh' ? '搜索文件名或上下文...' : 'Search file name or context...'}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-8 text-sm"
+          className="h-8 bg-background text-sm"
         />
       </div>
 
