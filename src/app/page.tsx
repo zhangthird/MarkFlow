@@ -245,7 +245,10 @@ export default function Home() {
   useEffect(() => {
     const restore = async () => {
       if (!('showDirectoryPicker' in window)) return
-      if (isRestoringRef.current) return
+      if (isRestoringRef.current) {
+        console.debug('Restoration already in progress, skipping concurrent attempt')
+        return
+      }
       
       isRestoringRef.current = true
       try {
