@@ -1073,13 +1073,21 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       currentParts.pop()
 
       const relativeParts = src.split('/').filter(Boolean)
+      let depth = currentParts.length
       for (const part of relativeParts) {
         if (part === '.') continue
         if (part === '..') {
+          // Prevent navigating above the root directory; if this happens,
+          // fall back to the original src to avoid constructing an invalid path.
+          if (depth === 0) {
+            return src
+          }
           currentParts.pop()
+          depth--
           continue
         }
         currentParts.push(part)
+        depth++
       }
 
       const normalizedPath = `/${currentParts.join('/')}`
