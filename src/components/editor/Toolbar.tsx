@@ -285,7 +285,7 @@ export function Toolbar({ onOpenFolder, editorRef }: ToolbarProps) {
       <div className="w-px h-5 bg-border mx-2" />
 
       {/* Format tools - only show for markdown files */}
-      {currentFile?.fileType !== 'excalidraw' && (
+      {(currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text') && (
         <>
           <TooltipProvider>
             <Tooltip>
