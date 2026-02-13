@@ -267,6 +267,8 @@ export function Sidebar({ onOpenFolder }: SidebarProps) {
     }
   }
 
+  const openFolderLabel = language === 'zh' ? '打开' : 'Open'
+
   if (!sidebarOpen) return null
 
   return (
@@ -305,16 +307,20 @@ export function Sidebar({ onOpenFolder }: SidebarProps) {
                   <Pencil className="w-4 h-4 mr-2" />
                   Excalidraw
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleNewFolder}>
+                  <Folder className="w-4 h-4 mr-2" />
+                  {language === 'zh' ? '文件夹' : 'Folder'}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={handleNewFolder}
+              onClick={onOpenFolder}
             >
               <Folder className="w-3 h-3 mr-1" />
-              {language === 'zh' ? '文件夹' : 'Folder'}
+              {openFolderLabel}
             </Button>
           </div>
         </div>
