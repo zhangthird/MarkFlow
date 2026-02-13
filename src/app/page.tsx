@@ -19,7 +19,11 @@ const PERSIST_STORE = 'kv'
 const ROOT_HANDLE_KEY = 'root-directory-handle'
 const LAST_FILE_PATH_KEY = 'last-open-file-path'
 
+let cachedDb: IDBDatabase | null = null
+
 async function getPersistDb(): Promise<IDBDatabase> {
+  if (cachedDb) return cachedDb
+  
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(PERSIST_DB_NAME, 1)
     request.onupgradeneeded = () => {
@@ -28,7 +32,14 @@ async function getPersistDb(): Promise<IDBDatabase> {
         db.createObjectStore(PERSIST_STORE)
       }
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      cachedDb = request.result
+      // Clear cache if connection is closed
+      cachedDb.onclose = () => {
+        cachedDb = null
+      }
+      resolve(cachedDb)
+    }
     request.onerror = () => reject(request.error)
   })
 }
