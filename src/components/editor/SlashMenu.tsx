@@ -68,18 +68,15 @@ interface SlashMenuProps {
 const categoryConfig = {
   basic: { 
     label: 'Basic', 
-    icon: <Type className="w-3 h-3" />,
-    gradient: ''
+    icon: <Type className="w-3 h-3" />
   },
   block: { 
     label: 'Blocks', 
-    icon: <Sparkles className="w-3 h-3" />,
-    gradient: ''
+    icon: <Sparkles className="w-3 h-3" />
   },
   media: { 
     label: 'Media', 
-    icon: <FileImage className="w-3 h-3" />,
-    gradient: ''
+    icon: <FileImage className="w-3 h-3" />
   }
 }
 
@@ -288,107 +285,4 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
       </div>
     </div>
   )
-}
-
-// Hook for slash command detection
-export function useSlashCommand(
-  textarea: HTMLTextAreaElement | null,
-  onCommand: (insert: string) => void
-) {
-  const [showMenu, setShowMenu] = useState(false)
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
-  const [filter, setFilter] = useState('')
-  const slashStartPos = useRef<number | null>(null)
-  
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!textarea) return
-    
-    const value = textarea.value
-    const pos = textarea.selectionStart
-    
-    // Check for "/" trigger
-    if (e.key === '/' && !showMenu) {
-      // Check if we're at the start of a line or after whitespace
-      const beforeCursor = value.substring(0, pos)
-      const afterNewline = beforeCursor.substring(beforeCursor.lastIndexOf('\n') + 1)
-      
-      if (afterNewline.trim() === '' || afterNewline === '') {
-        // Show menu
-        slashStartPos.current = pos
-        setFilter('')
-        setShowMenu(true)
-        
-        // Calculate position
-        const rect = textarea.getBoundingClientRect()
-        const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 24
-        const lines = beforeCursor.split('\n')
-        const currentLine = lines.length
-        const charInLine = lines[lines.length - 1].length
-        
-        // Approximate position
-        setMenuPosition({
-          top: rect.top + (currentLine * lineHeight * 0.6) + 30,
-          left: rect.left + (charInLine * 8) + 20
-        })
-      }
-    }
-  }, [textarea, showMenu])
-  
-  const handleInput = useCallback(() => {
-    if (!textarea || !showMenu) return
-    
-    const pos = textarea.selectionStart
-    
-    // Check if we should close the menu
-    if (slashStartPos.current === null) {
-      setShowMenu(false)
-      return
-    }
-    
-    // Get text after slash
-    const textAfterSlash = textarea.value.substring(slashStartPos.current, pos)
-    
-    // Close if we moved before slash start or typed space
-    if (pos < slashStartPos.current || textAfterSlash.includes(' ')) {
-      setShowMenu(false)
-      slashStartPos.current = null
-      return
-    }
-    
-    // Update filter (remove the leading "/")
-    setFilter(textAfterSlash.substring(1))
-  }, [textarea, showMenu])
-  
-  const selectCommand = useCallback((cmd: SlashCommand) => {
-    if (!textarea || slashStartPos.current === null) return
-    
-    const pos = textarea.selectionStart
-    const before = textarea.value.substring(0, slashStartPos.current - 1) // Remove the "/"
-    const after = textarea.value.substring(pos)
-    
-    // Insert command text - just compute the new value
-    const newValue = before + cmd.insert + after
-    
-    // Close menu first
-    setShowMenu(false)
-    slashStartPos.current = null
-    
-    // Call callback with new value - parent will update the textarea
-    onCommand(newValue)
-  }, [textarea, onCommand])
-  
-  const closeMenu = useCallback(() => {
-    setShowMenu(false)
-    slashStartPos.current = null
-  }, [])
-  
-  return {
-    showMenu,
-    menuPosition,
-    filter,
-    handleKeyDown,
-    handleInput,
-    selectCommand,
-    closeMenu
-  }
 }

@@ -7,7 +7,7 @@ import { Toolbar } from '@/components/editor/Toolbar'
 import { SearchDialog } from '@/components/editor/SearchDialog'
 import { BacklinksPanel } from '@/components/editor/BacklinksPanel'
 import { useEditorStore, FileNode, detectFileType } from '@/store/editor-store'
-import { PanelLeft, PanelRightClose, PanelRight } from 'lucide-react'
+import { PanelLeft, PanelRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 
