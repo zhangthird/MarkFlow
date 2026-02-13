@@ -1,13 +1,15 @@
 'use client'
 
 import React, { useRef, useState } from 'react'
-import { useEditorStore, FileNode, detectFileType } from '@/store/editor-store'
+import { useEditorStore, FileNode } from '@/store/editor-store'
 import { 
   ChevronDown, 
   ChevronRight, 
   FileText, 
   Folder, 
   FolderOpen,
+  Image as ImageIcon,
+  File,
   Plus,
   Trash2,
   Edit2,
@@ -61,6 +63,8 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
   const isFolder = node.type === 'folder'
   const isModified = node.isModified
   const isExcalidraw = node.fileType === 'excalidraw'
+  const isImage = node.fileType === 'image'
+  const isText = node.fileType === 'text' || node.fileType === 'markdown'
 
   const handleClick = () => {
     if (isFolder) {
@@ -129,7 +133,9 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
             
             {/* Icon */}
             {!isFolder && isExcalidraw && <Pencil className="w-4 h-4 text-purple-500 shrink-0" />}
-            {!isFolder && !isExcalidraw && <FileText className="w-4 h-4 text-blue-500 shrink-0" />}
+            {!isFolder && isImage && <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />}
+            {!isFolder && !isExcalidraw && !isImage && isText && <FileText className="w-4 h-4 text-blue-500 shrink-0" />}
+            {!isFolder && !isExcalidraw && !isImage && !isText && <File className="w-4 h-4 text-muted-foreground shrink-0" />}
             {isFolder && (isOpen ? (
               <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
             ) : (
@@ -261,6 +267,8 @@ export function Sidebar({ onOpenFolder }: SidebarProps) {
     }
   }
 
+  const openFolderLabel = language === 'zh' ? '打开' : 'Open'
+
   if (!sidebarOpen) return null
 
   return (
@@ -299,16 +307,20 @@ export function Sidebar({ onOpenFolder }: SidebarProps) {
                   <Pencil className="w-4 h-4 mr-2" />
                   Excalidraw
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleNewFolder}>
+                  <Folder className="w-4 h-4 mr-2" />
+                  {language === 'zh' ? '文件夹' : 'Folder'}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={handleNewFolder}
+              onClick={onOpenFolder}
             >
               <Folder className="w-3 h-3 mr-1" />
-              {language === 'zh' ? '文件夹' : 'Folder'}
+              {openFolderLabel}
             </Button>
           </div>
         </div>
