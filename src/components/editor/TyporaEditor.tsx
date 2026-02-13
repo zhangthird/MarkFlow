@@ -522,7 +522,7 @@ function InlineBlockEditor({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         onClick={handleClick}
-        className="w-full resize-none border-none bg-transparent p-0 text-base leading-7 outline-none"
+        className="w-full resize-none border-none bg-transparent p-0 text-base leading-[1.75] outline-none"
         spellCheck={false}
         autoFocus
         rows={lineCount}
