@@ -69,6 +69,7 @@ export default function Home() {
   const editorRef = useRef<TyporaEditorRef>(null)
   const [isMounted, setIsMounted] = useState(false)
   const [backlinksOpen, setBacklinksOpen] = useState(false)
+  const isRestoringRef = useRef(false)
   
   const {
     content,
@@ -209,6 +210,11 @@ export default function Home() {
       return
     }
 
+    if (isRestoringRef.current) {
+      toast.info(language === 'zh' ? '正在恢复上次打开的目录，请稍候...' : 'Restoring previous folder, please wait...')
+      return
+    }
+
     try {
       const dirHandle = await (window as Window & { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker()
       await loadDirectory(dirHandle)
@@ -221,7 +227,7 @@ export default function Home() {
         console.error(err)
       }
     }
-  }, [loadDirectory, t])
+  }, [loadDirectory, t, language])
 
   // Handle content change
   const handleContentChange = useCallback((newContent: string) => {
@@ -239,13 +245,16 @@ export default function Home() {
   useEffect(() => {
     const restore = async () => {
       if (!('showDirectoryPicker' in window)) return
+      if (isRestoringRef.current) return
+      
+      isRestoringRef.current = true
       try {
         const savedHandle = await idbGet<FileSystemDirectoryHandle>(ROOT_HANDLE_KEY)
         if (!savedHandle) return
 
         const permission = await savedHandle.queryPermission({ mode: 'readwrite' })
         if (permission !== 'granted') {
-          toast.info(language === 'zh' ? '已检测到上次目录，请点击“打开”重新授权。' : 'Previous folder detected. Click "Open" to re-authorize access.')
+          toast.info(language === 'zh' ? '已检测到上次目录，请点击"打开"重新授权。' : 'Previous folder detected. Click "Open" to re-authorize access.')
           return
         }
 
@@ -254,9 +263,11 @@ export default function Home() {
         console.error('Failed to restore previous folder:', error)
         toast.error(
           language === 'zh'
-            ? '无法自动恢复上次打开的目录，请通过“打开”按钮手动选择。'
+            ? '无法自动恢复上次打开的目录，请通过"打开"按钮手动选择。'
             : 'Could not automatically restore the previous folder. Please use "Open" to select it again.'
         )
+      } finally {
+        isRestoringRef.current = false
       }
     }
 
