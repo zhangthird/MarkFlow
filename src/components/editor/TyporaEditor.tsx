@@ -221,7 +221,11 @@ function isValidWikiLink(text: string): { name: string; extension: string } | nu
 }
 
 // Markdown components
-function createMarkdownComponents(isDark: boolean, onWikiLinkClick?: (name: string) => void) {
+function createMarkdownComponents(
+  isDark: boolean,
+  onWikiLinkClick?: (name: string) => void,
+  resolveImageSrc?: (src?: string) => string | undefined
+) {
   return {
     code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => {
       const match = /language-(\w+)/.exec(className || '')
@@ -324,6 +328,19 @@ function createMarkdownComponents(isDark: boolean, onWikiLinkClick?: (name: stri
       }
       
       return <a href={href} {...props}>{children}</a>
+    },
+    img: ({ src, alt }: { src?: string; alt?: string }) => {
+      const resolvedSrc = resolveImageSrc?.(src) || src
+      if (!resolvedSrc) return null
+
+      return (
+        <img
+          src={resolvedSrc}
+          alt={alt || 'image'}
+          className="my-3 max-h-[60vh] w-auto max-w-full rounded-lg border border-border/60 bg-background object-contain shadow-sm"
+          loading="lazy"
+        />
+      )
     }
   }
 }
@@ -392,6 +409,7 @@ function InlineBlockEditor({
   isDark,
   onInput,
   onWikiLinkClick,
+  resolveImageSrc,
 }: {
   block: Block
   isActive: boolean
@@ -402,6 +420,7 @@ function InlineBlockEditor({
   isDark: boolean
   onInput?: (e: React.ChangeEvent<HTMLTextAreaElement>, blockId: string) => void
   onWikiLinkClick?: (name: string) => void
+  resolveImageSrc?: (src?: string) => string | undefined
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isActiveRef = useRef(isActive)
@@ -485,7 +504,7 @@ function InlineBlockEditor({
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
             rehypePlugins={[rehypeKatex]}
-            components={createMarkdownComponents(isDark, onWikiLinkClick)}
+            components={createMarkdownComponents(isDark, onWikiLinkClick, resolveImageSrc)}
           >
             {block.content || '\u00A0'}
           </ReactMarkdown>
@@ -495,18 +514,29 @@ function InlineBlockEditor({
   }
 
   return (
-    <textarea
-      ref={textareaRef}
-      value={block.content}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      onClick={handleClick}
-      className="w-full bg-transparent border-none resize-none outline-none leading-[1.75] text-base py-0.5"
-      spellCheck={false}
-      autoFocus
-      rows={lineCount}
-    />
+    <div className="relative py-0.5">
+      <div className="prose prose-sm max-w-none dark:prose-invert pointer-events-none text-sm leading-6 [&>*]:my-0">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
+          rehypePlugins={[rehypeKatex]}
+          components={createMarkdownComponents(isDark, onWikiLinkClick, resolveImageSrc)}
+        >
+          {block.content || '\u00A0'}
+        </ReactMarkdown>
+      </div>
+      <textarea
+        ref={textareaRef}
+        value={block.content}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={handleClick}
+        className="absolute inset-0 w-full resize-none border-none bg-transparent p-0 text-sm leading-6 text-transparent caret-foreground outline-none selection:bg-primary/20"
+        spellCheck={false}
+        autoFocus
+        rows={lineCount}
+      />
+    </div>
   )
 }
 
@@ -520,6 +550,7 @@ function SpecialBlockEditor({
   onKeyDown,
   isDark,
   onWikiLinkClick,
+  resolveImageSrc,
 }: {
   block: Block
   isActive: boolean
@@ -529,6 +560,7 @@ function SpecialBlockEditor({
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>, block: Block) => void
   isDark: boolean
   onWikiLinkClick?: (name: string) => void
+  resolveImageSrc?: (src?: string) => string | undefined
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isActiveRef = useRef(isActive)
@@ -645,7 +677,7 @@ function SpecialBlockEditor({
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
             rehypePlugins={[rehypeKatex]}
-            components={createMarkdownComponents(isDark, onWikiLinkClick)}
+            components={createMarkdownComponents(isDark, onWikiLinkClick, resolveImageSrc)}
           >
             {block.content || '\u00A0'}
           </ReactMarkdown>
@@ -688,6 +720,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     const theme = useEditorStore((state) => state.theme)
     const t = useEditorStore((state) => state.t)
     const files = useEditorStore((state) => state.files)
+    const currentFile = useEditorStore((state) => state.currentFile)
     const setCurrentFile = useEditorStore((state) => state.setCurrentFile)
     const setContent = useEditorStore((state) => state.setContent)
 
@@ -808,6 +841,41 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     // Handle keyboard navigation
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>, block: Block) => {
       const lines = content.split('\n')
+
+      if (e.key === 'Enter' && !e.shiftKey && block.type === 'list') {
+        const textarea = e.currentTarget
+        const value = textarea.value
+        const cursor = textarea.selectionStart
+        const lineStart = value.lastIndexOf('\n', cursor - 1) + 1
+        const lineEnd = value.indexOf('\n', cursor) === -1 ? value.length : value.indexOf('\n', cursor)
+        const currentLine = value.slice(lineStart, lineEnd)
+        const listMatch = currentLine.match(/^(\s*)([-*+]|(\d+)\.)\s(\[[ xX]\]\s)?(.*)$/)
+
+        if (listMatch) {
+          e.preventDefault()
+
+          const indent = listMatch[1] || ''
+          const bullet = listMatch[2]
+          const numberStr = listMatch[3]
+          const todoPrefix = listMatch[4] || ''
+          const textPart = (listMatch[5] || '').trim()
+
+          const prefix = numberStr
+            ? `${indent}${Number(numberStr) + 1}. ${todoPrefix}`
+            : `${indent}${bullet} ${todoPrefix}`
+
+          const insertText = textPart === '' ? '\n' : `\n${prefix}`
+          const newValue = value.slice(0, cursor) + insertText + value.slice(cursor)
+
+          handleBlockContentChange(block.id, newValue)
+
+          requestAnimationFrame(() => {
+            const newPos = cursor + insertText.length
+            textarea.selectionStart = textarea.selectionEnd = newPos
+          })
+          return
+        }
+      }
       
       if (e.key === 'Enter' && !e.shiftKey && block.type !== 'code' && block.type !== 'math' && block.type !== 'table') {
         e.preventDefault()
@@ -1043,6 +1111,44 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       }
     }, [files, setCurrentFile, setContent])
 
+    const resolveImageSrc = useCallback((src?: string) => {
+      if (!src || !currentFile?.path) return src
+      if (/^(https?:)?\/\//.test(src) || src.startsWith('data:') || src.startsWith('blob:')) return src
+
+      const currentParts = currentFile.path.split('/').filter(Boolean)
+      currentParts.pop()
+
+      const relativeParts = src.split('/').filter(Boolean)
+      for (const part of relativeParts) {
+        if (part === '.') continue
+        if (part === '..') {
+          currentParts.pop()
+          continue
+        }
+        currentParts.push(part)
+      }
+
+      const normalizedPath = `/${currentParts.join('/')}`
+
+      const findByPath = (nodes: typeof files): typeof files[number] | null => {
+        for (const node of nodes) {
+          if (node.type === 'file' && node.path === normalizedPath) return node
+          if (node.children) {
+            const found = findByPath(node.children)
+            if (found) return found
+          }
+        }
+        return null
+      }
+
+      const imageNode = findByPath(files)
+      if (imageNode?.fileType === 'image' && imageNode.blobUrl) {
+        return imageNode.blobUrl
+      }
+
+      return src
+    }, [currentFile, files])
+
     return (
       <div 
         ref={containerRef}
@@ -1064,6 +1170,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                   onKeyDown={handleSpecialKeyDown}
                   isDark={isDark}
                   onWikiLinkClick={handleWikiLinkClick}
+                  resolveImageSrc={resolveImageSrc}
                 />
               )
             }
@@ -1081,6 +1188,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                 isDark={isDark}
                 onInput={handleInputWithSlash}
                 onWikiLinkClick={handleWikiLinkClick}
+                resolveImageSrc={resolveImageSrc}
               />
             )
           })}
