@@ -255,6 +255,11 @@ export default function Home() {
         await loadDirectory(savedHandle)
       } catch (error) {
         console.error('Failed to restore previous folder:', error)
+        toast.error(
+          language === 'zh'
+            ? '无法自动恢复上次打开的目录，请通过“打开”按钮手动选择。'
+            : 'Could not automatically restore the previous folder. Please use "Open" to select it again.'
+        )
       }
     }
 
