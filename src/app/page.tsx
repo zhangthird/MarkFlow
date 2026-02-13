@@ -243,10 +243,7 @@ export default function Home() {
         const savedHandle = await idbGet<FileSystemDirectoryHandle>(ROOT_HANDLE_KEY)
         if (!savedHandle) return
 
-        let permission = await savedHandle.queryPermission({ mode: 'readwrite' })
-        if (permission !== 'granted') {
-          permission = await savedHandle.requestPermission({ mode: 'readwrite' })
-        }
+        const permission = await savedHandle.queryPermission({ mode: 'readwrite' })
         if (permission !== 'granted') {
           toast.info(language === 'zh' ? '已检测到上次目录，请点击“打开”重新授权。' : 'Previous folder detected. Click "Open" to re-authorize access.')
           return
