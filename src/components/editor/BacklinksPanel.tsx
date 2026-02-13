@@ -34,7 +34,7 @@ const extractWikiLinks = (
 
   for (const match of content.matchAll(wikiLinkRegex)) {
     const targetName = match[1].trim()
-    const position = match.index!
+    const position = match.index
 
     let currentPos = 0
     let lineNumber = 1
