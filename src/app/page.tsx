@@ -109,11 +109,12 @@ export default function Home() {
               path: `/${entryPath}`,
               children
             })
-          } else if (entry.kind === 'file' && (entry.name.endsWith('.md') || entry.name.endsWith('.txt') || entry.name.endsWith('.excalidraw') || entry.name.endsWith('.excalidraw.json'))) {
-            // Read file content
+          } else if (entry.kind === 'file') {
             const file = await entry.getFile()
-            const fileContent = await file.text()
             const fileType = detectFileType(entry.name)
+            const isReadableText = fileType === 'markdown' || fileType === 'text' || fileType === 'excalidraw'
+            const fileContent = isReadableText ? await file.text() : undefined
+            const blobUrl = fileType === 'image' ? URL.createObjectURL(file) : undefined
             
             nodes.push({
               id: entryPath,
@@ -121,8 +122,10 @@ export default function Home() {
               type: 'file',
               fileType,
               path: `/${entryPath}`,
-              content: fileType === 'markdown' ? fileContent : undefined,
+              content: fileType === 'markdown' || fileType === 'text' ? fileContent : undefined,
               excalidrawData: fileType === 'excalidraw' ? fileContent : undefined,
+              blobUrl,
+              mimeType: file.type,
               handle: entry, // Store the file handle for saving
               isModified: false
             })
@@ -173,6 +176,8 @@ export default function Home() {
   const handleContentChange = useCallback((newContent: string) => {
     updateCurrentFileContent(newContent)
   }, [updateCurrentFileContent])
+
+  const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -255,12 +260,36 @@ export default function Home() {
           {currentFile ? (
             currentFile.fileType === 'excalidraw' ? (
               <ExcalidrawEditor initialData={currentFile.excalidrawData} />
-            ) : (
+            ) : currentFile.fileType === 'image' ? (
+              <div className="flex-1 overflow-auto bg-muted/20 p-6">
+                <div className="mx-auto w-full max-w-5xl rounded-xl border border-border bg-background p-4 shadow-sm">
+                  <img
+                    src={currentFile.blobUrl}
+                    alt={currentFile.name}
+                    className="mx-auto max-h-[75vh] w-auto max-w-full rounded-md object-contain"
+                  />
+                  <div className="mt-3 text-center text-xs text-muted-foreground">
+                    {currentFile.name}
+                  </div>
+                </div>
+              </div>
+            ) : isTextLikeFile ? (
               <TyporaEditor
                 ref={editorRef}
                 content={content}
                 onChange={handleContentChange}
               />
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-6">
+                <div className="max-w-md rounded-xl border border-border bg-card p-6 text-center">
+                  <div className="mb-2 text-lg font-semibold">{currentFile.name}</div>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'zh'
+                      ? '该文件类型暂不支持直接编辑，但已经可以在文件树中浏览与管理。'
+                      : 'This file type is not editable yet, but it is now visible and manageable in the file tree.'}
+                  </p>
+                </div>
+              </div>
             )
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -277,14 +306,14 @@ export default function Home() {
         </main>
         
         {/* Backlinks panel */}
-        {backlinksOpen && !focusMode && currentFile?.fileType !== 'excalidraw' && (
+        {backlinksOpen && !focusMode && isTextLikeFile && (
           <div className="w-64 border-l border-border bg-sidebar shrink-0">
             <BacklinksPanel onClose={() => setBacklinksOpen(false)} />
           </div>
         )}
         
         {/* Backlinks toggle button */}
-        {!backlinksOpen && !focusMode && currentFile?.fileType !== 'excalidraw' && (
+        {!backlinksOpen && !focusMode && isTextLikeFile && (
           <div className="absolute right-0 top-14 z-10">
             <Button
               variant="ghost"
@@ -303,13 +332,21 @@ export default function Home() {
       {!focusMode && (
         <footer className="h-6 border-t border-border bg-muted/50 px-4 flex items-center justify-between text-xs text-muted-foreground shrink-0">
           <div className="flex items-center gap-4">
-            <span>{currentFile?.fileType === 'excalidraw' ? 'Excalidraw' : t('markdown')}</span>
+            <span>
+              {currentFile?.fileType === 'excalidraw'
+                ? 'Excalidraw'
+                : currentFile?.fileType === 'image'
+                  ? (language === 'zh' ? '图片' : 'Image')
+                  : currentFile?.fileType === 'binary'
+                    ? (language === 'zh' ? '二进制' : 'Binary')
+                    : t('markdown')}
+            </span>
             <span>{t('utf8')}</span>
             {currentFile?.isModified && (
               <span className="text-orange-500">{t('unsaved')}</span>
             )}
           </div>
-          {currentFile?.fileType !== 'excalidraw' && (
+          {isTextLikeFile && (
             <div className="flex items-center gap-4">
               <span>{content.split(/\s+/).filter(Boolean).length} {t('words')}</span>
               <span>{content.length} {t('characters')}</span>
