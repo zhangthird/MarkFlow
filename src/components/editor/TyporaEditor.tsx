@@ -513,6 +513,23 @@ function InlineBlockEditor({
     )
   }
 
+  if (block.type === 'heading') {
+    return (
+      <textarea
+        ref={textareaRef}
+        value={block.content}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={handleClick}
+        className="w-full resize-none border-none bg-transparent p-0 text-base leading-7 outline-none"
+        spellCheck={false}
+        autoFocus
+        rows={lineCount}
+      />
+    )
+  }
+
   return (
     <div className="relative py-0.5">
       <div className="prose prose-sm max-w-none dark:prose-invert pointer-events-none text-sm leading-6 [&>*]:my-0">
