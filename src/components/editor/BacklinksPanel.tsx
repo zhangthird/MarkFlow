@@ -98,8 +98,16 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
     const withoutExtMap = new Map<string, FileNode>()
 
     for (const file of flatFiles) {
-      fullNameMap.set(normalizeFileName(file.name), file)
-      withoutExtMap.set(normalizeFileNameWithoutExt(file.name), file)
+      const normalizedFullName = normalizeFileName(file.name)
+      const normalizedWithoutExt = normalizeFileNameWithoutExt(file.name)
+
+      if (!fullNameMap.has(normalizedFullName)) {
+        fullNameMap.set(normalizedFullName, file)
+      }
+
+      if (!withoutExtMap.has(normalizedWithoutExt)) {
+        withoutExtMap.set(normalizedWithoutExt, file)
+      }
     }
 
     return { fullNameMap, withoutExtMap }
