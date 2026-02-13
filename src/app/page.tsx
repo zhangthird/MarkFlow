@@ -19,11 +19,7 @@ const PERSIST_STORE = 'kv'
 const ROOT_HANDLE_KEY = 'root-directory-handle'
 const LAST_FILE_PATH_KEY = 'last-open-file-path'
 
-let cachedDb: IDBDatabase | null = null
-
 async function getPersistDb(): Promise<IDBDatabase> {
-  if (cachedDb) return cachedDb
-  
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(PERSIST_DB_NAME, 1)
     request.onupgradeneeded = () => {
@@ -32,14 +28,7 @@ async function getPersistDb(): Promise<IDBDatabase> {
         db.createObjectStore(PERSIST_STORE)
       }
     }
-    request.onsuccess = () => {
-      cachedDb = request.result
-      // Clear cache if connection is closed
-      cachedDb.onclose = () => {
-        cachedDb = null
-      }
-      resolve(cachedDb)
-    }
+    request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
 }
@@ -254,7 +243,10 @@ export default function Home() {
         const savedHandle = await idbGet<FileSystemDirectoryHandle>(ROOT_HANDLE_KEY)
         if (!savedHandle) return
 
-        const permission = await savedHandle.queryPermission({ mode: 'readwrite' })
+        let permission = await savedHandle.queryPermission({ mode: 'readwrite' })
+        if (permission !== 'granted') {
+          permission = await savedHandle.requestPermission({ mode: 'readwrite' })
+        }
         if (permission !== 'granted') {
           toast.info(language === 'zh' ? '已检测到上次目录，请点击“打开”重新授权。' : 'Previous folder detected. Click "Open" to re-authorize access.')
           return
@@ -263,11 +255,6 @@ export default function Home() {
         await loadDirectory(savedHandle)
       } catch (error) {
         console.error('Failed to restore previous folder:', error)
-        toast.error(
-          language === 'zh'
-            ? '无法自动恢复上次打开的目录，请通过“打开”按钮手动选择。'
-            : 'Could not automatically restore the previous folder. Please use "Open" to select it again.'
-        )
       }
     }
 

@@ -18,6 +18,8 @@ interface BacklinksPanelProps {
   onClose?: () => void
 }
 
+const WIKI_LINK_REGEX = /\[\[([^\]\.]+\.[^\]]+)\]\]/g
+
 const normalizeFileName = (name: string) => name.toLowerCase()
 
 const normalizeFileNameWithoutExt = (name: string) =>
@@ -30,9 +32,9 @@ const extractWikiLinks = (
 ): LinkReference[] => {
   const links: LinkReference[] = []
   const lines = content.split('\n')
-  const wikiLinkRegex = /\[\[([^\]\.]+\.[^\]]+)\]\]/g
 
-  for (const match of content.matchAll(wikiLinkRegex)) {
+  let match: RegExpExecArray | null
+  while ((match = WIKI_LINK_REGEX.exec(content)) !== null) {
     const targetName = match[1].trim()
     const position = match.index
 
@@ -55,6 +57,7 @@ const extractWikiLinks = (
     })
   }
 
+  WIKI_LINK_REGEX.lastIndex = 0
   return links
 }
 

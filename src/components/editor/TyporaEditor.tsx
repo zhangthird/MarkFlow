@@ -830,6 +830,41 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     // Handle keyboard navigation
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>, block: Block) => {
       const lines = content.split('\n')
+
+      if (e.key === 'Enter' && !e.shiftKey && block.type === 'list') {
+        const textarea = e.currentTarget
+        const value = textarea.value
+        const cursor = textarea.selectionStart
+        const lineStart = value.lastIndexOf('\n', cursor - 1) + 1
+        const lineEnd = value.indexOf('\n', cursor) === -1 ? value.length : value.indexOf('\n', cursor)
+        const currentLine = value.slice(lineStart, lineEnd)
+        const listMatch = currentLine.match(/^(\s*)([-*+]|(\d+)\.)\s(\[[ xX]\]\s)?(.*)$/)
+
+        if (listMatch) {
+          e.preventDefault()
+
+          const indent = listMatch[1] || ''
+          const bullet = listMatch[2]
+          const numberStr = listMatch[3]
+          const todoPrefix = listMatch[4] || ''
+          const textPart = (listMatch[5] || '').trim()
+
+          const prefix = numberStr
+            ? `${indent}${Number(numberStr) + 1}. ${todoPrefix}`
+            : `${indent}${bullet} ${todoPrefix}`
+
+          const insertText = textPart === '' ? '\n' : `\n${prefix}`
+          const newValue = value.slice(0, cursor) + insertText + value.slice(cursor)
+
+          handleBlockContentChange(block.id, newValue)
+
+          requestAnimationFrame(() => {
+            const newPos = cursor + insertText.length
+            textarea.selectionStart = textarea.selectionEnd = newPos
+          })
+          return
+        }
+      }
       
       if (e.key === 'Enter' && !e.shiftKey && block.type !== 'code' && block.type !== 'math' && block.type !== 'table') {
         e.preventDefault()
@@ -1073,21 +1108,13 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       currentParts.pop()
 
       const relativeParts = src.split('/').filter(Boolean)
-      let depth = currentParts.length
       for (const part of relativeParts) {
         if (part === '.') continue
         if (part === '..') {
-          // Prevent navigating above the root directory; if this happens,
-          // fall back to the original src to avoid constructing an invalid path.
-          if (depth === 0) {
-            return src
-          }
           currentParts.pop()
-          depth--
           continue
         }
         currentParts.push(part)
-        depth++
       }
 
       const normalizedPath = `/${currentParts.join('/')}`
