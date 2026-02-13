@@ -514,18 +514,29 @@ function InlineBlockEditor({
   }
 
   return (
-    <textarea
-      ref={textareaRef}
-      value={block.content}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      onClick={handleClick}
-      className="w-full bg-transparent border-none resize-none outline-none leading-[1.75] text-base py-0.5"
-      spellCheck={false}
-      autoFocus
-      rows={lineCount}
-    />
+    <div className="rounded-md border border-border/60 bg-background/40 px-2 py-1.5">
+      <div className="prose prose-sm max-w-none dark:prose-invert pointer-events-none opacity-95">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
+          rehypePlugins={[rehypeKatex]}
+          components={createMarkdownComponents(isDark, onWikiLinkClick, resolveImageSrc)}
+        >
+          {block.content || '\u00A0'}
+        </ReactMarkdown>
+      </div>
+      <textarea
+        ref={textareaRef}
+        value={block.content}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={handleClick}
+        className="mt-1 w-full resize-none rounded-sm border border-border/50 bg-background/70 px-2 py-1.5 text-sm leading-[1.65] outline-none focus:border-primary/50"
+        spellCheck={false}
+        autoFocus
+        rows={lineCount}
+      />
+    </div>
   )
 }
 
