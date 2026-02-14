@@ -359,6 +359,44 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       [isDark, handleWikiLinkClick, resolveImageSrc]
     )
 
+    const resolveImageSrc = useCallback((src?: string) => {
+      if (!src || !currentFile?.path) return src
+      if (/^(https?:)?\/\//.test(src) || src.startsWith('data:') || src.startsWith('blob:')) return src
+
+      const currentParts = currentFile.path.split('/').filter(Boolean)
+      currentParts.pop()
+
+      const relativeParts = src.split('/').filter(Boolean)
+      for (const part of relativeParts) {
+        if (part === '.') continue
+        if (part === '..') {
+          currentParts.pop()
+          continue
+        }
+        currentParts.push(part)
+      }
+
+      const normalizedPath = `/${currentParts.join('/')}`
+
+      const findByPath = (nodes: typeof files): typeof files[number] | null => {
+        for (const node of nodes) {
+          if (node.type === 'file' && node.path === normalizedPath) return node
+          if (node.children) {
+            const found = findByPath(node.children)
+            if (found) return found
+          }
+        }
+        return null
+      }
+
+      const imageNode = findByPath(files)
+      if (imageNode?.fileType === 'image' && imageNode.blobUrl) {
+        return imageNode.blobUrl
+      }
+
+      return src
+    }, [currentFile, files])
+
     return (
       <div ref={containerRef} className="editor-scrollbar relative flex-1 h-full overflow-y-auto">
         <div className={`min-h-full p-8 md:p-12 lg:p-16 ${focusMode ? 'max-w-4xl mx-auto' : ''}`}>
