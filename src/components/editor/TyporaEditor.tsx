@@ -532,7 +532,7 @@ function InlineBlockEditor({
 
   return (
     <div className="relative min-h-[1.5em] py-0.5">
-      <div className="prose prose-sm max-w-none dark:prose-invert pointer-events-none">
+      <div className="prose prose-sm max-w-none dark:prose-invert pointer-events-none leading-6">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
           rehypePlugins={[rehypeKatex]}
@@ -548,7 +548,7 @@ function InlineBlockEditor({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         onClick={handleClick}
-        className="absolute inset-0 w-full resize-none border-none bg-transparent p-0 text-base leading-[1.75] text-transparent caret-foreground outline-none selection:bg-primary/20"
+        className="absolute inset-0 w-full resize-none border-none bg-transparent p-0 text-sm leading-6 font-normal tracking-normal text-transparent caret-foreground outline-none selection:bg-primary/20"
         spellCheck={false}
         autoFocus
         rows={lineCount}
