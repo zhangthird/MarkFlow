@@ -263,6 +263,8 @@ export function Sidebar() {
     }
   }
 
+  const openFolderLabel = language === 'zh' ? '打开' : 'Open'
+
   if (!sidebarOpen) return null
 
   return (
