@@ -7,17 +7,6 @@ interface ExcalidrawEditorProps {
   initialData?: string
 }
 
-// Debounce helper
-function useDebounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
-  return useCallback((...args: Parameters<T>) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-    }
-    timeoutRef.current = setTimeout(() => fn(...args), delay)
-  }, [fn, delay]) as T
-}
-
 export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
   const [components, setComponents] = useState<{
     Excalidraw: React.ComponentType<any> | null
@@ -27,11 +16,13 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
   const [error, setError] = useState<string | null>(null)
   const theme = useEditorStore((state) => state.theme)
   const updateExcalidrawData = useEditorStore((state) => state.updateExcalidrawData)
+  const saveCurrentFile = useEditorStore((state) => state.saveCurrentFile)
   
   const apiRef = useRef<any>(null)
   const isInitialLoad = useRef(true)
   const lastSavedData = useRef<string>('')
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const latestSceneRef = useRef<{ elements: readonly any[]; appState: any; files: any } | null>(null)
 
   // Dynamically import Excalidraw on client side only
   useEffect(() => {
@@ -109,11 +100,10 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
 
   // Internal save function
   const saveData = useCallback(() => {
-    if (!apiRef.current || isInitialLoad.current) return
+    if (!apiRef.current || isInitialLoad.current || !latestSceneRef.current) return
     
     try {
-      const elements = apiRef.current.getSceneElements()
-      const appState = apiRef.current.getAppState()
+      const { elements, appState, files } = latestSceneRef.current
       
       const data = JSON.stringify({
         type: 'excalidraw',
@@ -124,7 +114,7 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
           viewBackgroundColor: appState.viewBackgroundColor,
           gridSize: appState.gridSize,
         },
-        files: null
+        files: files || null
       })
       
       // Only update if data actually changed
@@ -137,8 +127,31 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
     }
   }, [updateExcalidrawData])
 
+  const flushSceneToStore = useCallback(() => {
+    if (!apiRef.current || isInitialLoad.current) return false
+
+    const sceneFromApi = {
+      elements: apiRef.current.getSceneElements?.() ?? latestSceneRef.current?.elements,
+      appState: apiRef.current.getAppState?.() ?? latestSceneRef.current?.appState,
+      files: apiRef.current.getFiles?.() ?? latestSceneRef.current?.files,
+    }
+
+    if (!sceneFromApi.elements || !sceneFromApi.appState) return false
+
+    latestSceneRef.current = {
+      elements: sceneFromApi.elements,
+      appState: sceneFromApi.appState,
+      files: sceneFromApi.files,
+    }
+
+    saveData()
+    return true
+  }, [saveData])
+
   // Handle scene change - save to store with debounce
-  const handleChange = useCallback(() => {
+  const handleChange = useCallback((elements: readonly any[], appState: any, files: any) => {
+    latestSceneRef.current = { elements, appState, files }
+
     // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current)
@@ -149,6 +162,21 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
       saveData()
     }, 300)
   }, [saveData])
+
+  useEffect(() => {
+    const onSaveShortcut = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return
+
+      e.preventDefault()
+      const didFlush = flushSceneToStore()
+      if (didFlush) {
+        void saveCurrentFile()
+      }
+    }
+
+    window.addEventListener('keydown', onSaveShortcut, true)
+    return () => window.removeEventListener('keydown', onSaveShortcut, true)
+  }, [flushSceneToStore, saveCurrentFile])
 
   // Error state
   if (error) {
