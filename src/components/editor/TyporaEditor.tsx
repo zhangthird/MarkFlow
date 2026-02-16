@@ -520,7 +520,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
               <div className="prose prose-sm max-w-none dark:prose-invert">
                 {contentLines.map((line, index) => (
                   <div
-                    key={`${index}-${line}`}
+                    key={index}
                     className="min-h-6"
                     onClick={() => {
                       setEditingLineIndex(index)
