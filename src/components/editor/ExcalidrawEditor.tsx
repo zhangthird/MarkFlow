@@ -7,6 +7,49 @@ interface ExcalidrawEditorProps {
   initialData?: string
 }
 
+// Simple error boundary component
+class ExcalidrawErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Excalidraw Error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-background">
+          <div className="text-center p-8 max-w-md">
+            <div className="text-red-500 text-4xl mb-4">⚠️</div>
+            <h2 className="text-xl font-semibold mb-2">Excalidraw Error</h2>
+            <p className="text-muted-foreground mb-4 text-sm">
+              {this.state.error?.message || 'An error occurred while loading Excalidraw'}
+            </p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
   const [components, setComponents] = useState<{
     Excalidraw: React.ComponentType<any> | null
@@ -211,49 +254,51 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
   const { Excalidraw: ExcalidrawComponent, MainMenu: MainMenuComponent, WelcomeScreen: WelcomeScreenComponent } = components
 
   return (
-    <div className="h-full w-full excalidraw-container">
-      <ExcalidrawComponent
-        excalidrawAPI={handleAPIReady}
-        initialData={initialScene}
-        onChange={handleChange}
-        theme={theme === 'dark' ? 'dark' : 'light'}
-        UIOptions={{
-          canvasActions: {
-            loadScene: true,
-            saveToActiveFile: true,
-            export: {
-              saveFileToDisk: true,
+    <ExcalidrawErrorBoundary>
+      <div className="h-full w-full excalidraw-container">
+        <ExcalidrawComponent
+          excalidrawAPI={handleAPIReady}
+          initialData={initialScene}
+          onChange={handleChange}
+          theme={theme === 'dark' ? 'dark' : 'light'}
+          UIOptions={{
+            canvasActions: {
+              loadScene: true,
+              saveToActiveFile: true,
+              export: {
+                saveFileToDisk: true,
+              },
             },
-          },
-        }}
-      >
-        <MainMenuComponent>
-          <MainMenuComponent.DefaultItems.LoadScene />
-          <MainMenuComponent.DefaultItems.SaveAs />
-          <MainMenuComponent.DefaultItems.Export />
-          <MainMenuComponent.DefaultItems.SaveAsImage />
-          <MainMenuComponent.Separator />
-          <MainMenuComponent.DefaultItems.ClearCanvas />
-          <MainMenuComponent.Separator />
-          <MainMenuComponent.DefaultItems.ToggleTheme />
-          <MainMenuComponent.DefaultItems.ChangeCanvasBackground />
-        </MainMenuComponent>
-        <WelcomeScreenComponent>
-          <WelcomeScreenComponent.Hints.MenuHint />
-          <WelcomeScreenComponent.Hints.ToolbarHint />
-          <WelcomeScreenComponent.Hints.HelpHint />
-          <WelcomeScreenComponent.Center>
-            <WelcomeScreenComponent.Center.Logo />
-            <WelcomeScreenComponent.Center.Heading>
-              Welcome to Excalidraw
-            </WelcomeScreenComponent.Center.Heading>
-            <WelcomeScreenComponent.Center.Menu>
-              <WelcomeScreenComponent.Center.MenuItemLoadScene />
-              <WelcomeScreenComponent.Center.MenuItemHelp />
-            </WelcomeScreenComponent.Center.Menu>
-          </WelcomeScreenComponent.Center>
-        </WelcomeScreenComponent>
-      </ExcalidrawComponent>
-    </div>
+          }}
+        >
+          <MainMenuComponent>
+            <MainMenuComponent.DefaultItems.LoadScene />
+            <MainMenuComponent.DefaultItems.SaveAs />
+            <MainMenuComponent.DefaultItems.Export />
+            <MainMenuComponent.DefaultItems.SaveAsImage />
+            <MainMenuComponent.Separator />
+            <MainMenuComponent.DefaultItems.ClearCanvas />
+            <MainMenuComponent.Separator />
+            <MainMenuComponent.DefaultItems.ToggleTheme />
+            <MainMenuComponent.DefaultItems.ChangeCanvasBackground />
+          </MainMenuComponent>
+          <WelcomeScreenComponent>
+            <WelcomeScreenComponent.Hints.MenuHint />
+            <WelcomeScreenComponent.Hints.ToolbarHint />
+            <WelcomeScreenComponent.Hints.HelpHint />
+            <WelcomeScreenComponent.Center>
+              <WelcomeScreenComponent.Center.Logo />
+              <WelcomeScreenComponent.Center.Heading>
+                Welcome to Excalidraw
+              </WelcomeScreenComponent.Center.Heading>
+              <WelcomeScreenComponent.Center.Menu>
+                <WelcomeScreenComponent.Center.MenuItemLoadScene />
+                <WelcomeScreenComponent.Center.MenuItemHelp />
+              </WelcomeScreenComponent.Center.Menu>
+            </WelcomeScreenComponent.Center>
+          </WelcomeScreenComponent>
+        </ExcalidrawComponent>
+      </div>
+    </ExcalidrawErrorBoundary>
   )
 }
