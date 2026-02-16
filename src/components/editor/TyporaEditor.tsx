@@ -282,17 +282,33 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         const textarea = e.currentTarget
         const hasSelection = textarea.selectionStart !== textarea.selectionEnd
         const atLineStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0
-        const lineIsEmptyListItem = /^(\s*)(?:[-+*]\s+\[(?: |x|X)\]|[-+*]|\d+[.)])\s*$/.test(textarea.value)
 
-        if (!hasSelection && atLineStart && lineIsEmptyListItem && editingLineIndex > 0) {
+        // When backspace is pressed at the start of a line, delete the current line
+        // and move cursor to the end of the previous line
+        if (!hasSelection && atLineStart && editingLineIndex > 0) {
           e.preventDefault()
           const lines = content.split('\n')
-          lines.splice(editingLineIndex, 1)
-
+          const currentLineContent = lines[editingLineIndex]
           const previousLineIndex = editingLineIndex - 1
+          const previousLineContent = lines[previousLineIndex]
+          
+          // Merge current line content to the previous line
+          lines[previousLineIndex] = previousLineContent + currentLineContent
+          // Remove current line
+          lines.splice(editingLineIndex, 1)
+          
+          // Move to previous line with cursor at the end of the original previous line content
           setEditingLineIndex(previousLineIndex)
-          setEditingLineValue(lines[previousLineIndex] ?? '')
+          setEditingLineValue(lines[previousLineIndex])
           onChange(lines.join('\n'))
+          
+          // Set cursor position to end of previous line (before merged content)
+          requestAnimationFrame(() => {
+            if (lineTextareaRef.current) {
+              lineTextareaRef.current.selectionStart = previousLineContent.length
+              lineTextareaRef.current.selectionEnd = previousLineContent.length
+            }
+          })
         }
 
         return
