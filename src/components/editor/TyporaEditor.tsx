@@ -8,7 +8,7 @@ import rehypeKatex from 'rehype-katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useEditorStore } from '@/store/editor-store'
-import { SlashMenu, useSlashCommand } from './SlashMenu'
+import { SlashMenu } from './SlashMenu'
 import { MermaidRenderer, isMermaidBlock } from './MermaidRenderer'
 import 'katex/dist/katex.min.css'
 
@@ -115,34 +115,17 @@ function parseBlocks(content: string): Block[] {
       continue
     }
 
-    // List - group consecutive list items
+    // List item (single line to support line-level editing)
     if (/^(\s*)[-*+]\s/.test(line) || /^(\s*)\d+\.\s/.test(line)) {
-      let endLine = i + 1
-      while (endLine < lines.length) {
-        const nextLine = lines[endLine]
-        if (/^(\s*)[-*+]\s/.test(nextLine) || /^(\s*)\d+\.\s/.test(nextLine)) {
-          endLine++
-        }
-        else if (nextLine.startsWith('  ') && nextLine.trim() !== '') {
-          endLine++
-        }
-        else if (nextLine.trim() === '' && endLine + 1 < lines.length && (/^(\s*)[-*+]\s/.test(lines[endLine + 1]) || /^(\s*)\d+\.\s/.test(lines[endLine + 1]))) {
-          endLine++
-        }
-        else {
-          break
-        }
-      }
-      const blockContent = lines.slice(i, endLine).join('\n')
       blocks.push({
         id: `block-${blockId++}`,
         type: 'list',
-        content: blockContent,
+        content: line,
         startLine,
-        endLine: endLine - 1,
-        isMultiline: endLine - i > 1
+        endLine: i,
+        isMultiline: false
       })
-      i = endLine
+      i++
       continue
     }
 
@@ -808,6 +791,61 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     // Handle keyboard navigation
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>, block: Block) => {
       const lines = content.split('\n')
+
+      if (e.key === 'Enter' && !e.shiftKey && block.type === 'list') {
+        const textarea = e.currentTarget
+        const value = textarea.value
+        const cursor = textarea.selectionStart
+        const lineStart = value.lastIndexOf('\n', cursor - 1) + 1
+        const lineEnd = value.indexOf('\n', cursor) === -1 ? value.length : value.indexOf('\n', cursor)
+        const currentLine = value.slice(lineStart, lineEnd)
+        const listMatch = currentLine.match(/^(\s*)([-*+]|(\d+)\.)\s(\[[ xX]\]\s)?(.*)$/)
+
+        if (listMatch) {
+          e.preventDefault()
+
+          const indent = listMatch[1] || ''
+          const bullet = listMatch[2]
+          const numberStr = listMatch[3]
+          const todoPrefix = listMatch[4] || ''
+          const textPart = (listMatch[5] || '').trim()
+
+          // Empty list item: exit list naturally by converting current line to paragraph
+          if (textPart === '') {
+            handleBlockContentChange(block.id, '')
+            requestAnimationFrame(() => {
+              textarea.focus()
+              textarea.selectionStart = textarea.selectionEnd = 0
+            })
+            return
+          }
+
+          const nextPrefix = numberStr
+            ? `${indent}${Number(numberStr) + 1}. ${todoPrefix}`
+            : `${indent}${bullet} ${todoPrefix}`
+
+          const newLines = [...lines]
+          newLines.splice(block.endLine + 1, 0, nextPrefix)
+          onChange(newLines.join('\n'))
+
+          setTimeout(() => {
+            const newBlocks = parseBlocks(newLines.join('\n'))
+            const nextBlock = newBlocks.find(b => b.startLine === block.endLine + 1)
+            if (nextBlock) {
+              setActiveBlockId(nextBlock.id)
+              setTimeout(() => {
+                const nextTextarea = containerRef.current?.querySelector('textarea')
+                if (nextTextarea) {
+                  nextTextarea.focus()
+                  const pos = nextPrefix.length
+                  nextTextarea.selectionStart = nextTextarea.selectionEnd = pos
+                }
+              }, 0)
+            }
+          }, 0)
+          return
+        }
+      }
       
       if (e.key === 'Enter' && !e.shiftKey && block.type !== 'code' && block.type !== 'math' && block.type !== 'table') {
         e.preventDefault()
