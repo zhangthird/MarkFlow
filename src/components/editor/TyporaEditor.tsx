@@ -197,11 +197,19 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
 
     useEffect(() => {
       if (editingLineIndex === null || !lineTextareaRef.current) return
-      lineTextareaRef.current.focus()
+      const lineTextarea = lineTextareaRef.current
+
+      // If the line textarea is already focused and the user has a caret/selection,
+      // avoid overriding it when re-entering this effect.
+      if (document.activeElement === lineTextarea) {
+        return
+      }
+
+      lineTextarea.focus()
       const pos = editingLineValue.length
-      lineTextareaRef.current.selectionStart = pos
-      lineTextareaRef.current.selectionEnd = pos
-    }, [editingLineIndex, editingLineValue])
+      lineTextarea.selectionStart = pos
+      lineTextarea.selectionEnd = pos
+    }, [editingLineIndex])
 
     useImperativeHandle(ref, () => ({
       getTextarea: () => textareaRef.current,
@@ -267,6 +275,26 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       if (e.key === 'Escape') {
         e.preventDefault()
         setEditingLineIndex(null)
+        return
+      }
+
+      if (e.key === 'Backspace') {
+        const textarea = e.currentTarget
+        const hasSelection = textarea.selectionStart !== textarea.selectionEnd
+        const atLineStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0
+        const lineIsEmptyListItem = /^(\s*)(?:[-+*]\s+\[(?: |x|X)\]|[-+*]|\d+[.)])\s*$/.test(textarea.value)
+
+        if (!hasSelection && atLineStart && lineIsEmptyListItem && editingLineIndex > 0) {
+          e.preventDefault()
+          const lines = content.split('\n')
+          lines.splice(editingLineIndex, 1)
+
+          const previousLineIndex = editingLineIndex - 1
+          setEditingLineIndex(previousLineIndex)
+          setEditingLineValue(lines[previousLineIndex] ?? '')
+          onChange(lines.join('\n'))
+        }
+
         return
       }
 
@@ -492,7 +520,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
               <div className="prose prose-sm max-w-none dark:prose-invert">
                 {contentLines.map((line, index) => (
                   <div
-                    key={`${index}-${line}`}
+                    key={index}
                     className="min-h-6"
                     onClick={() => {
                       setEditingLineIndex(index)
@@ -516,13 +544,9 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                         spellCheck={false}
                       />
                     ) : (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
-                        rehypePlugins={[rehypeKatex]}
-                        components={markdownComponents}
-                      >
-                        {line || ' '}
-                      </ReactMarkdown>
+                      <div className="w-full text-sm leading-6 whitespace-pre-wrap">
+                        {line || '\u00A0'}
+                      </div>
                     )}
                   </div>
                 ))}
