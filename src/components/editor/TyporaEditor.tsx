@@ -292,23 +292,34 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
           const previousLineIndex = editingLineIndex - 1
           const previousLineContent = lines[previousLineIndex]
           
-          // Merge current line content to the previous line
-          lines[previousLineIndex] = previousLineContent + currentLineContent
-          // Remove current line
-          lines.splice(editingLineIndex, 1)
+          // Check if current line is an empty list item (to preserve standard list behavior)
+          const lineIsEmptyListItem = /^(\s*)(?:[-+*]\s+\[(?: |x|X)\]|[-+*]|\d+[.)])\s*$/.test(currentLineContent)
           
-          // Move to previous line with cursor at the end of the original previous line content
-          setEditingLineIndex(previousLineIndex)
-          setEditingLineValue(lines[previousLineIndex])
-          onChange(lines.join('\n'))
-          
-          // Set cursor position to end of previous line (before merged content)
-          requestAnimationFrame(() => {
-            if (lineTextareaRef.current) {
-              lineTextareaRef.current.selectionStart = previousLineContent.length
-              lineTextareaRef.current.selectionEnd = previousLineContent.length
-            }
-          })
+          if (lineIsEmptyListItem) {
+            // For empty list items, just remove the current line without merging
+            lines.splice(editingLineIndex, 1)
+            setEditingLineIndex(previousLineIndex)
+            setEditingLineValue(lines[previousLineIndex] ?? '')
+            onChange(lines.join('\n'))
+          } else {
+            // For normal lines, merge current line content to the previous line
+            lines[previousLineIndex] = previousLineContent + currentLineContent
+            // Remove current line
+            lines.splice(editingLineIndex, 1)
+            
+            // Move to previous line with cursor at the end of the original previous line content
+            setEditingLineIndex(previousLineIndex)
+            setEditingLineValue(lines[previousLineIndex])
+            onChange(lines.join('\n'))
+            
+            // Set cursor position to end of previous line (before merged content)
+            requestAnimationFrame(() => {
+              if (lineTextareaRef.current) {
+                lineTextareaRef.current.selectionStart = previousLineContent.length
+                lineTextareaRef.current.selectionEnd = previousLineContent.length
+              }
+            })
+          }
         }
 
         return
