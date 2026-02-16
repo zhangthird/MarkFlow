@@ -528,65 +528,81 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     // Group lines into blocks for proper markdown rendering
     const contentBlocks = useMemo(() => {
       const blocks: { startLine: number; endLine: number; content: string }[] = []
-      let i = 0
+      let currentLineIndex = 0
       
-      while (i < contentLines.length) {
-        const line = contentLines[i]
+      while (currentLineIndex < contentLines.length) {
+        const line = contentLines[currentLineIndex]
         
         // Check for code block
         if (line.startsWith('```')) {
-          const startLine = i
-          i++
-          while (i < contentLines.length && !contentLines[i].startsWith('```')) {
-            i++
+          const startLine = currentLineIndex
+          currentLineIndex++
+          // Limit search to prevent consuming entire document if not closed
+          const maxSearchLines = 100
+          let searchCount = 0
+          while (currentLineIndex < contentLines.length && 
+                 !contentLines[currentLineIndex].startsWith('```') && 
+                 searchCount < maxSearchLines) {
+            currentLineIndex++
+            searchCount++
           }
-          i++ // Include closing ```
+          if (currentLineIndex < contentLines.length && contentLines[currentLineIndex].startsWith('```')) {
+            currentLineIndex++ // Include closing ```
+          }
           blocks.push({
             startLine,
-            endLine: i - 1,
-            content: contentLines.slice(startLine, i).join('\n')
+            endLine: currentLineIndex - 1,
+            content: contentLines.slice(startLine, currentLineIndex).join('\n')
           })
           continue
         }
         
         // Check for table (line with | pipes)
         if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
-          const startLine = i
+          const startLine = currentLineIndex
           // Collect all consecutive table lines
-          while (i < contentLines.length && contentLines[i].includes('|')) {
-            i++
+          while (currentLineIndex < contentLines.length && contentLines[currentLineIndex].includes('|')) {
+            currentLineIndex++
           }
           blocks.push({
             startLine,
-            endLine: i - 1,
-            content: contentLines.slice(startLine, i).join('\n')
+            endLine: currentLineIndex - 1,
+            content: contentLines.slice(startLine, currentLineIndex).join('\n')
           })
           continue
         }
         
         // Check for block math ($$)
         if (line.trim() === '$$') {
-          const startLine = i
-          i++
-          while (i < contentLines.length && contentLines[i].trim() !== '$$') {
-            i++
+          const startLine = currentLineIndex
+          currentLineIndex++
+          // Limit search to prevent consuming entire document if not closed
+          const maxSearchLines = 50
+          let searchCount = 0
+          while (currentLineIndex < contentLines.length && 
+                 contentLines[currentLineIndex].trim() !== '$$' && 
+                 searchCount < maxSearchLines) {
+            currentLineIndex++
+            searchCount++
           }
-          i++ // Include closing $$
+          if (currentLineIndex < contentLines.length && contentLines[currentLineIndex].trim() === '$$') {
+            currentLineIndex++ // Include closing $$
+          }
           blocks.push({
             startLine,
-            endLine: i - 1,
-            content: contentLines.slice(startLine, i).join('\n')
+            endLine: currentLineIndex - 1,
+            content: contentLines.slice(startLine, currentLineIndex).join('\n')
           })
           continue
         }
         
         // Single line block
         blocks.push({
-          startLine: i,
-          endLine: i,
+          startLine: currentLineIndex,
+          endLine: currentLineIndex,
           content: line
         })
-        i++
+        currentLineIndex++
       }
       
       return blocks
@@ -623,7 +639,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                       key={blockIndex}
                       className="min-h-6"
                       onClick={() => {
-                        // For multi-line blocks, edit at cursor line or first line
+                        // Edit at first line of the block
                         const lineToEdit = block.startLine
                         setEditingLineIndex(lineToEdit)
                         setEditingLineValue(contentLines[lineToEdit])
