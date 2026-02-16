@@ -525,6 +525,89 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
 
     const contentLines = useMemo(() => content.split('\n'), [content])
 
+    // Group lines into blocks for proper markdown rendering
+    const contentBlocks = useMemo(() => {
+      const blocks: { startLine: number; endLine: number; content: string }[] = []
+      let currentLineIndex = 0
+      
+      while (currentLineIndex < contentLines.length) {
+        const line = contentLines[currentLineIndex]
+        
+        // Check for code block
+        if (line.startsWith('```')) {
+          const startLine = currentLineIndex
+          currentLineIndex++
+          // Limit search to prevent consuming entire document if not closed
+          const maxSearchLines = 100
+          let searchCount = 0
+          while (currentLineIndex < contentLines.length && 
+                 !contentLines[currentLineIndex].startsWith('```') && 
+                 searchCount < maxSearchLines) {
+            currentLineIndex++
+            searchCount++
+          }
+          if (currentLineIndex < contentLines.length && contentLines[currentLineIndex].startsWith('```')) {
+            currentLineIndex++ // Include closing ```
+          }
+          blocks.push({
+            startLine,
+            endLine: currentLineIndex - 1,
+            content: contentLines.slice(startLine, currentLineIndex).join('\n')
+          })
+          continue
+        }
+        
+        // Check for table (line with | pipes)
+        if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
+          const startLine = currentLineIndex
+          // Collect all consecutive table lines
+          while (currentLineIndex < contentLines.length && contentLines[currentLineIndex].includes('|')) {
+            currentLineIndex++
+          }
+          blocks.push({
+            startLine,
+            endLine: currentLineIndex - 1,
+            content: contentLines.slice(startLine, currentLineIndex).join('\n')
+          })
+          continue
+        }
+        
+        // Check for block math ($$)
+        if (line.trim() === '$$') {
+          const startLine = currentLineIndex
+          currentLineIndex++
+          // Limit search to prevent consuming entire document if not closed
+          const maxSearchLines = 50
+          let searchCount = 0
+          while (currentLineIndex < contentLines.length && 
+                 contentLines[currentLineIndex].trim() !== '$$' && 
+                 searchCount < maxSearchLines) {
+            currentLineIndex++
+            searchCount++
+          }
+          if (currentLineIndex < contentLines.length && contentLines[currentLineIndex].trim() === '$$') {
+            currentLineIndex++ // Include closing $$
+          }
+          blocks.push({
+            startLine,
+            endLine: currentLineIndex - 1,
+            content: contentLines.slice(startLine, currentLineIndex).join('\n')
+          })
+          continue
+        }
+        
+        // Single line block
+        blocks.push({
+          startLine: currentLineIndex,
+          endLine: currentLineIndex,
+          content: line
+        })
+        currentLineIndex++
+      }
+      
+      return blocks
+    }, [contentLines])
+
     return (
       <div ref={containerRef} className="editor-scrollbar relative flex-1 h-full overflow-y-auto">
         <div className={`min-h-full p-8 md:p-12 lg:p-16 ${focusMode ? 'max-w-4xl mx-auto' : ''}`}>
@@ -545,38 +628,57 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
           ) : (
             <div className="min-h-[70vh] cursor-text">
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                {contentLines.map((line, index) => (
-                  <div
-                    key={index}
-                    className="min-h-6"
-                    onClick={() => {
-                      setEditingLineIndex(index)
-                      setEditingLineValue(line)
-                    }}
-                  >
-                    {editingLineIndex === index ? (
-                      <textarea
-                        ref={lineTextareaRef}
-                        value={editingLineValue}
-                        onChange={(e) => {
-                          setEditingLineValue(e.target.value)
-                          applyLineEdit(index, e.target.value)
-                        }}
-                        onKeyDown={handleLineTextareaKeyDown}
-                        onBlur={() => {
-                          setEditingLineIndex(null)
-                        }}
-                        className="w-full resize-none border-none bg-transparent p-0 text-sm leading-6 outline-none"
-                        rows={1}
-                        spellCheck={false}
-                      />
-                    ) : (
-                      <div className="w-full text-sm leading-6 whitespace-pre-wrap">
-                        {line || '\u00A0'}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {contentBlocks.map((block, blockIndex) => {
+                  const isMultiLine = block.startLine !== block.endLine
+                  const isEditing = editingLineIndex !== null && 
+                    editingLineIndex >= block.startLine && 
+                    editingLineIndex <= block.endLine
+                  
+                  return (
+                    <div
+                      key={blockIndex}
+                      className="min-h-6"
+                      onClick={() => {
+                        // Edit at first line of the block
+                        const lineToEdit = block.startLine
+                        setEditingLineIndex(lineToEdit)
+                        setEditingLineValue(contentLines[lineToEdit])
+                      }}
+                    >
+                      {isEditing ? (
+                        <textarea
+                          ref={lineTextareaRef}
+                          value={editingLineValue}
+                          onChange={(e) => {
+                            setEditingLineValue(e.target.value)
+                            applyLineEdit(editingLineIndex!, e.target.value)
+                          }}
+                          onKeyDown={handleLineTextareaKeyDown}
+                          onBlur={() => {
+                            setEditingLineIndex(null)
+                          }}
+                          className="w-full resize-none border-none bg-transparent p-0 text-sm leading-6 outline-none"
+                          rows={1}
+                          spellCheck={false}
+                        />
+                      ) : (
+                        <div className="w-full text-sm leading-6">
+                          {block.content.trim() === '' ? (
+                            <div className="min-h-6">{'\u00A0'}</div>
+                          ) : (
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
+                              rehypePlugins={[rehypeKatex]}
+                              components={markdownComponents}
+                            >
+                              {block.content}
+                            </ReactMarkdown>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
 
                 {contentLines.length === 0 && (
                   <div

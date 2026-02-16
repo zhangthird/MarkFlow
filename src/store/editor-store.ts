@@ -393,6 +393,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ files: addToTree(files) })
     }
     
+    // Automatically navigate to the newly created file
+    if (type === 'file') {
+      set({ 
+        currentFile: newFile,
+        content: newFile.content || ''
+      })
+    }
+    
     // Create file in file system if handle exists
     if (rootHandle && type === 'file') {
       rootHandle.getFileHandle(name, { create: true }).catch(console.error)
