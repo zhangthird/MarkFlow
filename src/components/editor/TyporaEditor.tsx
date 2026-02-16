@@ -525,6 +525,73 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
 
     const contentLines = useMemo(() => content.split('\n'), [content])
 
+    // Group lines into blocks for proper markdown rendering
+    const contentBlocks = useMemo(() => {
+      const blocks: { startLine: number; endLine: number; content: string }[] = []
+      let i = 0
+      
+      while (i < contentLines.length) {
+        const line = contentLines[i]
+        
+        // Check for code block
+        if (line.startsWith('```')) {
+          const startLine = i
+          i++
+          while (i < contentLines.length && !contentLines[i].startsWith('```')) {
+            i++
+          }
+          i++ // Include closing ```
+          blocks.push({
+            startLine,
+            endLine: i - 1,
+            content: contentLines.slice(startLine, i).join('\n')
+          })
+          continue
+        }
+        
+        // Check for table (line with | pipes)
+        if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
+          const startLine = i
+          // Collect all consecutive table lines
+          while (i < contentLines.length && contentLines[i].includes('|')) {
+            i++
+          }
+          blocks.push({
+            startLine,
+            endLine: i - 1,
+            content: contentLines.slice(startLine, i).join('\n')
+          })
+          continue
+        }
+        
+        // Check for block math ($$)
+        if (line.trim() === '$$') {
+          const startLine = i
+          i++
+          while (i < contentLines.length && contentLines[i].trim() !== '$$') {
+            i++
+          }
+          i++ // Include closing $$
+          blocks.push({
+            startLine,
+            endLine: i - 1,
+            content: contentLines.slice(startLine, i).join('\n')
+          })
+          continue
+        }
+        
+        // Single line block
+        blocks.push({
+          startLine: i,
+          endLine: i,
+          content: line
+        })
+        i++
+      }
+      
+      return blocks
+    }, [contentLines])
+
     return (
       <div ref={containerRef} className="editor-scrollbar relative flex-1 h-full overflow-y-auto">
         <div className={`min-h-full p-8 md:p-12 lg:p-16 ${focusMode ? 'max-w-4xl mx-auto' : ''}`}>
@@ -545,48 +612,57 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
           ) : (
             <div className="min-h-[70vh] cursor-text">
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                {contentLines.map((line, index) => (
-                  <div
-                    key={index}
-                    className="min-h-6"
-                    onClick={() => {
-                      setEditingLineIndex(index)
-                      setEditingLineValue(line)
-                    }}
-                  >
-                    {editingLineIndex === index ? (
-                      <textarea
-                        ref={lineTextareaRef}
-                        value={editingLineValue}
-                        onChange={(e) => {
-                          setEditingLineValue(e.target.value)
-                          applyLineEdit(index, e.target.value)
-                        }}
-                        onKeyDown={handleLineTextareaKeyDown}
-                        onBlur={() => {
-                          setEditingLineIndex(null)
-                        }}
-                        className="w-full resize-none border-none bg-transparent p-0 text-sm leading-6 outline-none"
-                        rows={1}
-                        spellCheck={false}
-                      />
-                    ) : (
-                      <div className="w-full text-sm leading-6">
-                        {line.trim() === '' ? (
-                          <div className="min-h-6">{'\u00A0'}</div>
-                        ) : (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
-                            rehypePlugins={[rehypeKatex]}
-                            components={markdownComponents}
-                          >
-                            {line}
-                          </ReactMarkdown>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {contentBlocks.map((block, blockIndex) => {
+                  const isMultiLine = block.startLine !== block.endLine
+                  const isEditing = editingLineIndex !== null && 
+                    editingLineIndex >= block.startLine && 
+                    editingLineIndex <= block.endLine
+                  
+                  return (
+                    <div
+                      key={blockIndex}
+                      className="min-h-6"
+                      onClick={() => {
+                        // For multi-line blocks, edit at cursor line or first line
+                        const lineToEdit = block.startLine
+                        setEditingLineIndex(lineToEdit)
+                        setEditingLineValue(contentLines[lineToEdit])
+                      }}
+                    >
+                      {isEditing ? (
+                        <textarea
+                          ref={lineTextareaRef}
+                          value={editingLineValue}
+                          onChange={(e) => {
+                            setEditingLineValue(e.target.value)
+                            applyLineEdit(editingLineIndex!, e.target.value)
+                          }}
+                          onKeyDown={handleLineTextareaKeyDown}
+                          onBlur={() => {
+                            setEditingLineIndex(null)
+                          }}
+                          className="w-full resize-none border-none bg-transparent p-0 text-sm leading-6 outline-none"
+                          rows={1}
+                          spellCheck={false}
+                        />
+                      ) : (
+                        <div className="w-full text-sm leading-6">
+                          {block.content.trim() === '' ? (
+                            <div className="min-h-6">{'\u00A0'}</div>
+                          ) : (
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
+                              rehypePlugins={[rehypeKatex]}
+                              components={markdownComponents}
+                            >
+                              {block.content}
+                            </ReactMarkdown>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
 
                 {contentLines.length === 0 && (
                   <div
