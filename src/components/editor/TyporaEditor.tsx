@@ -544,13 +544,9 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                         spellCheck={false}
                       />
                     ) : (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
-                        rehypePlugins={[rehypeKatex]}
-                        components={markdownComponents}
-                      >
-                        {line || ' '}
-                      </ReactMarkdown>
+                      <div className="w-full text-sm leading-6 whitespace-pre-wrap">
+                        {line || '\u00A0'}
+                      </div>
                     )}
                   </div>
                 ))}
