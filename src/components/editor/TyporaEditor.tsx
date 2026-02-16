@@ -153,7 +153,10 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
   function TyporaEditor({ content, onChange }, ref) {
     const containerRef = useRef<HTMLDivElement>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
+    const lineTextareaRef = useRef<HTMLTextAreaElement>(null)
     const [isEditing, setIsEditing] = useState(false)
+    const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null)
+    const [editingLineValue, setEditingLineValue] = useState('')
     const [isDark, setIsDark] = useState(false)
     const [showSlashMenu, setShowSlashMenu] = useState(false)
     const [slashPosition, setSlashPosition] = useState({ top: 0, left: 0 })
@@ -192,14 +195,45 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       textareaRef.current.selectionEnd = pos
     }, [isEditing])
 
+    useEffect(() => {
+      if (editingLineIndex === null || !lineTextareaRef.current) return
+      lineTextareaRef.current.focus()
+      const pos = editingLineValue.length
+      lineTextareaRef.current.selectionStart = pos
+      lineTextareaRef.current.selectionEnd = pos
+    }, [editingLineIndex, editingLineValue])
+
     useImperativeHandle(ref, () => ({
       getTextarea: () => textareaRef.current,
       focus: () => {
+        setEditingLineIndex(null)
         if (!isEditing) setIsEditing(true)
         requestAnimationFrame(() => textareaRef.current?.focus())
       },
       insertAtCursor: (before: string, after: string = '') => {
+        if (editingLineIndex !== null && lineTextareaRef.current) {
+          const lineTextarea = lineTextareaRef.current
+          const start = lineTextarea.selectionStart
+          const end = lineTextarea.selectionEnd
+          const selected = lineTextarea.value.slice(start, end)
+          const updatedLine = lineTextarea.value.slice(0, start) + before + selected + after + lineTextarea.value.slice(end)
+          setEditingLineValue(updatedLine)
+
+          const lines = content.split('\n')
+          lines[editingLineIndex] = updatedLine
+          onChange(lines.join('\n'))
+
+          requestAnimationFrame(() => {
+            lineTextarea.focus()
+            const cursorPos = start + before.length + selected.length
+            lineTextarea.selectionStart = cursorPos
+            lineTextarea.selectionEnd = cursorPos
+          })
+          return
+        }
+
         if (!isEditing) setIsEditing(true)
+        setEditingLineIndex(null)
 
         requestAnimationFrame(() => {
           const textarea = textareaRef.current
@@ -219,7 +253,81 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
           })
         })
       }
-    }), [isEditing, onChange])
+    }), [content, editingLineIndex, isEditing, onChange])
+
+    const applyLineEdit = useCallback((lineIndex: number, nextLine: string) => {
+      const lines = content.split('\n')
+      lines[lineIndex] = nextLine
+      onChange(lines.join('\n'))
+    }, [content, onChange])
+
+    const handleLineTextareaKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (editingLineIndex === null) return
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setEditingLineIndex(null)
+        return
+      }
+
+      if (e.key !== 'Enter') return
+
+      e.preventDefault()
+      const textarea = e.currentTarget
+      const cursorPos = textarea.selectionStart
+      const currentLine = textarea.value
+      const before = currentLine.slice(0, cursorPos)
+      const after = currentLine.slice(cursorPos)
+
+      const todoMatch = before.match(/^(\s*)[-+*]\s+\[(?: |x|X)\]\s+(.*)$/)
+      const unorderedMatch = before.match(/^(\s*)([-+*])\s+(.*)$/)
+      const orderedMatch = before.match(/^(\s*)(\d+)([.)])\s+(.*)$/)
+
+      const lines = content.split('\n')
+      let updatedCurrentLine = currentLine
+      let insertedLine = ''
+
+      if (todoMatch) {
+        const [, indent, itemContent] = todoMatch
+        if (itemContent.trim() === '' && after.trim() === '') {
+          updatedCurrentLine = ''
+        } else {
+          updatedCurrentLine = before
+          insertedLine = `${indent}- [ ] ${after}`
+        }
+      } else if (unorderedMatch) {
+        const [, indent, bullet, itemContent] = unorderedMatch
+        if (itemContent.trim() === '' && after.trim() === '') {
+          updatedCurrentLine = ''
+        } else {
+          updatedCurrentLine = before
+          insertedLine = `${indent}${bullet} ${after}`
+        }
+      } else if (orderedMatch) {
+        const [, indent, num, separator, itemContent] = orderedMatch
+        if (itemContent.trim() === '' && after.trim() === '') {
+          updatedCurrentLine = ''
+        } else {
+          updatedCurrentLine = before
+          insertedLine = `${indent}${Number(num) + 1}${separator} ${after}`
+        }
+      } else {
+        updatedCurrentLine = before
+        insertedLine = after
+      }
+
+      lines[editingLineIndex] = updatedCurrentLine
+
+      if (insertedLine !== '') {
+        lines.splice(editingLineIndex + 1, 0, insertedLine)
+        setEditingLineIndex(editingLineIndex + 1)
+        setEditingLineValue(insertedLine)
+      } else {
+        setEditingLineValue(updatedCurrentLine)
+      }
+
+      onChange(lines.join('\n'))
+    }, [content, editingLineIndex, onChange])
 
     const handleWikiLinkClick = useCallback((targetName: string) => {
       const findFile = (nodes: typeof files, name: string): typeof files[0] | null => {
@@ -360,6 +468,8 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       [isDark, handleWikiLinkClick, resolveImageSrc]
     )
 
+    const contentLines = useMemo(() => content.split('\n'), [content])
+
     return (
       <div ref={containerRef} className="editor-scrollbar relative flex-1 h-full overflow-y-auto">
         <div className={`min-h-full p-8 md:p-12 lg:p-16 ${focusMode ? 'max-w-4xl mx-auto' : ''}`}>
@@ -378,15 +488,54 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
               autoFocus
             />
           ) : (
-            <div className="min-h-[70vh] cursor-text" onClick={() => setIsEditing(true)}>
+            <div className="min-h-[70vh] cursor-text">
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={markdownComponents}
-                >
-                  {content || '\n'}
-                </ReactMarkdown>
+                {contentLines.map((line, index) => (
+                  <div
+                    key={`${index}-${line}`}
+                    className="min-h-6"
+                    onClick={() => {
+                      setEditingLineIndex(index)
+                      setEditingLineValue(line)
+                    }}
+                  >
+                    {editingLineIndex === index ? (
+                      <textarea
+                        ref={lineTextareaRef}
+                        value={editingLineValue}
+                        onChange={(e) => {
+                          setEditingLineValue(e.target.value)
+                          applyLineEdit(index, e.target.value)
+                        }}
+                        onKeyDown={handleLineTextareaKeyDown}
+                        onBlur={() => {
+                          setEditingLineIndex(null)
+                        }}
+                        className="w-full resize-none border-none bg-transparent p-0 text-sm leading-6 outline-none"
+                        rows={1}
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
+                        rehypePlugins={[rehypeKatex]}
+                        components={markdownComponents}
+                      >
+                        {line || ' '}
+                      </ReactMarkdown>
+                    )}
+                  </div>
+                ))}
+
+                {contentLines.length === 0 && (
+                  <div
+                    className="min-h-6"
+                    onClick={() => {
+                      setEditingLineIndex(0)
+                      setEditingLineValue('')
+                    }}
+                  />
+                )}
               </div>
             </div>
           )}
