@@ -273,7 +273,6 @@ export function ExcalidrawEditor({ initialData }: ExcalidrawEditorProps) {
         >
           <MainMenuComponent>
             <MainMenuComponent.DefaultItems.LoadScene />
-            <MainMenuComponent.DefaultItems.SaveAs />
             <MainMenuComponent.DefaultItems.Export />
             <MainMenuComponent.DefaultItems.SaveAsImage />
             <MainMenuComponent.Separator />
