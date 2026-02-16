@@ -197,11 +197,19 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
 
     useEffect(() => {
       if (editingLineIndex === null || !lineTextareaRef.current) return
-      lineTextareaRef.current.focus()
+      const lineTextarea = lineTextareaRef.current
+
+      // If the line textarea is already focused and the user has a caret/selection,
+      // avoid overriding it when re-entering this effect.
+      if (document.activeElement === lineTextarea) {
+        return
+      }
+
+      lineTextarea.focus()
       const pos = editingLineValue.length
-      lineTextareaRef.current.selectionStart = pos
-      lineTextareaRef.current.selectionEnd = pos
-    }, [editingLineIndex, editingLineValue])
+      lineTextarea.selectionStart = pos
+      lineTextarea.selectionEnd = pos
+    }, [editingLineIndex])
 
     useImperativeHandle(ref, () => ({
       getTextarea: () => textareaRef.current,
