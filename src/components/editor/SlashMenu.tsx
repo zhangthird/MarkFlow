@@ -136,8 +136,9 @@ export function SlashMenu({ visible, position, filter, onSelect, onClose }: Slas
       }
     }
     
-    window.addEventListener('keydown', handleKeyDown, true)
-    return () => window.removeEventListener('keydown', handleKeyDown, true)
+    // Don't use capture phase to avoid intercepting textarea events
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [visible, effectiveSelectedIndex, filteredCommands, onSelect, onClose])
   
   // Scroll selected item into view
