@@ -199,12 +199,8 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       if (editingLineIndex === null || !lineTextareaRef.current) return
       const lineTextarea = lineTextareaRef.current
 
-      // If the line textarea is already focused and the user has a caret/selection,
-      // avoid overriding it when re-entering this effect.
-      if (document.activeElement === lineTextarea) {
-        return
-      }
-
+      // Always focus and position cursor, even if already focused
+      // This ensures proper cursor positioning when moving between lines
       lineTextarea.focus()
       const pos = editingLineValue.length
       lineTextarea.selectionStart = pos
@@ -373,13 +369,10 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
 
       lines[editingLineIndex] = updatedCurrentLine
 
-      if (insertedLine !== '') {
-        lines.splice(editingLineIndex + 1, 0, insertedLine)
-        setEditingLineIndex(editingLineIndex + 1)
-        setEditingLineValue(insertedLine)
-      } else {
-        setEditingLineValue(updatedCurrentLine)
-      }
+      // Always create a new line when Enter is pressed
+      lines.splice(editingLineIndex + 1, 0, insertedLine)
+      setEditingLineIndex(editingLineIndex + 1)
+      setEditingLineValue(insertedLine)
 
       onChange(lines.join('\n'))
     }, [content, editingLineIndex, onChange])
