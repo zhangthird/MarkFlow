@@ -1,10 +1,10 @@
 export type FileSystemEntryKind = 'file' | 'folder'
 
 function pathSegments(path: string): string[] {
-  return path
-    .split('/')
-    .map(segment => segment.trim())
-    .filter(Boolean)
+  // Workspace paths come from FileSystemHandle.name and may legally contain
+  // leading/trailing spaces. Preserve segments exactly when resolving disk
+  // handles; validation of newly created names is a separate concern.
+  return path.split('/').filter(segment => segment.length > 0)
 }
 
 export function isValidEntryName(name: string): boolean {
