@@ -83,7 +83,7 @@ export function MarkdownRenderer({
 
           if (language === 'mermaid') {
             return (
-              <div className="markflow-mermaid" onClick={event => event.stopPropagation()}>
+              <div className="markflow-mermaid">
                 <MermaidRenderer code={codeString} isDark={isDark} />
               </div>
             )
@@ -172,7 +172,6 @@ export function MarkdownRenderer({
               alt={alt || 'image'}
               className="markflow-image"
               loading="lazy"
-              onClick={event => event.stopPropagation()}
             />
           )
         },
