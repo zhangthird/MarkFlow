@@ -149,6 +149,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     const activeBlock = editingRange
       ? contentBlocks.find(block => block.startLine === editingRange.startLine) ?? null
       : null
+    const activeBlockKind = activeBlock?.kind ?? null
     const activeSource = editingRange
       ? content.split('\n').slice(editingRange.startLine, editingRange.endLine + 1).join('\n')
       : ''
@@ -477,7 +478,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       }
 
       if (event.key !== 'Enter') return
-      if (event.shiftKey || activeBlock?.kind === 'code' || activeBlock?.kind === 'math' || activeBlock?.kind === 'table') return
+      if (event.shiftKey || activeBlockKind === 'code' || activeBlockKind === 'math' || activeBlockKind === 'table') return
 
       const cursor = textarea.selectionStart
       const source = textarea.value
@@ -538,12 +539,12 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         return
       }
 
-      if (activeBlock?.kind === 'paragraph' || activeBlock?.kind === 'heading') {
+      if (activeBlockKind === 'paragraph' || activeBlockKind === 'heading') {
         event.preventDefault()
         createNextParagraph(textarea)
       }
     }, [
-      activeBlock?.kind,
+      activeBlockKind,
       commitSourceValue,
       createNextParagraph,
       mergeWithPreviousBlock,
@@ -612,7 +613,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                         }}
                         className="markflow-source-editor"
                         rows={Math.max(1, activeSource.split('\n').length)}
-                        spellCheck={activeBlock?.kind !== 'code' && activeBlock?.kind !== 'math' && activeBlock?.kind !== 'table'}
+                        spellCheck={activeBlockKind !== 'code' && activeBlockKind !== 'math' && activeBlockKind !== 'table'}
                         aria-label="Markdown source"
                       />
 
