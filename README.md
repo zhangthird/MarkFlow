@@ -1,6 +1,10 @@
-# MarkFlow - WYSIWYG Markdown / 图片 / Excalidraw 编辑器
+# MarkFlow
 
-一个简洁优雅的编辑器，提供所见即所得写作体验，支持 Markdown、纯文本、图片预览和 Excalidraw 绘图，并可直接管理本地文件夹中的全部文件。
+MarkFlow 是一个 **local-first 的 Markdown 知识工作区**。它直接工作在用户选择的本地文件夹上，以普通 Markdown 文件作为主要写作格式，同时提供接近 Typora 的所见即所得编辑、源码模式、Wiki Link、反向链接、Mermaid、数学公式、Excalidraw、图片/PDF 预览和本地文件管理。
+
+> 核心原则：**磁盘上的文件是最终数据源，编辑器状态只是交互中的工作副本。**
+
+这意味着 MarkFlow 不要求把笔记导入专有数据库；工作区仍然可以被 VS Code、Git、Obsidian 或其他普通文件工具读取和管理。
 
 ![Markdown Editor](https://img.shields.io/badge/Editor-Markdown-blue)
 ![Excalidraw](https://img.shields.io/badge/Drawing-Excalidraw-6965db)
@@ -9,509 +13,294 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38B2AC)
 
-## ✨ 功能特性
+## 当前主要能力
 
-### 1. WYSIWYG 所见即所得编辑
+### Typora 风格 Markdown 编辑
 
-- **即时渲染**：Markdown 内容实时渲染显示，包括标题、粗体、斜体、列表、表格、代码块、数学公式等
-- **块级编辑**：点击任意内容即可编辑，编辑完成后立即渲染
-- **智能分组**：自动识别多行结构（表格、代码块、数学公式），确保完整渲染
-- **统一输入行为**：标题、段落、列表等都使用一致的块编辑模型
-- **极简界面**：减少视觉干扰，聚焦内容本身
-- **格式化 Toggle**：选中文本点击格式化按钮可切换添加/移除格式
+MarkFlow 默认使用块级 WYSIWYG 编辑模型：
 
-### 2. Slash (/) 快捷命令
+- 未激活的 Markdown 块保持渲染状态。
+- 点击一个块后，只显示该块的 Markdown 源码，其余内容继续渲染。
+- 段落、标题、列表、引用、代码块、数学公式和表格按 Markdown 语义分块，而不是简单逐行拆分。
+- 代码、数学公式、Mermaid 和表格在源码编辑时保留实时预览。
+- 普通段落中按 `Enter` 创建真正的新 Markdown 段落。
+- 列表、任务列表和引用支持连续输入与自然退出。
+- 块首 `Backspace` 可与上一块合并；在块边界可使用方向键进入相邻块。
+- 点击渲染内容时会尽量把源码光标定位到对应位置，而不是总跳到块末尾。
+- `Ctrl/Cmd + B`、`Ctrl/Cmd + I`、`Ctrl/Cmd + K` 可直接操作活动块。
 
-输入 `/` 快速插入各种内容：
+### Source Code Mode
 
-| 命令 | 功能 | 插入内容 |
-|------|------|---------|
-| `/h1` | 标题 1 | `# ` |
-| `/h2` | 标题 2 | `## ` |
-| `/bullet` | 无序列表 | `- ` |
-| `/numbered` | 有序列表 | `1. ` |
-| `/todo` | 待办事项 | `- [ ] ` |
-| `/code` | 代码块 | 代码块模板 |
-| `/math` | 数学公式块 | `$$..$$` |
-| `/table` | 表格 | 表格模板 |
-| `/mermaid` | Mermaid 图表 | 流程图模板 |
-| `/link` | 链接 | `[text](url)` |
-| `/image` | 图片 | `![alt](url)` |
-| `/wikilink` | Wiki 链接 | `[[` |
+除了默认 WYSIWYG，MarkFlow 还提供显式的整篇 Markdown 源码视图：
 
-**使用方法**：
-1. 在空行输入 `/`
-2. 弹出命令菜单
-3. 使用 ↑↓ 选择，Enter 确认，Esc 关闭
-4. 或继续输入过滤命令
+- `Ctrl/Cmd + /` 在 WYSIWYG 与源码模式之间切换。
+- 状态栏也提供切换按钮。
+- 两种模式共享同一份 `content`、undo/redo、dirty state、自动保存和本地文件写入流程。
+- 模式切换会尽量保留当前阅读位置，避免长文档跳回顶部。
+- 源码模式支持 Tab/多行缩进以及常用 Markdown 格式快捷键。
 
-**界面说明（极简优化）**：
-- 更轻量的弹层与更克制的配色，和编辑器整体风格一致
-- 分类标题、命令项、快捷键徽标视觉层级更清晰
-- 鼠标与键盘选择状态更一致，减少视觉跳变
+### Markdown / GFM / 数学 / Mermaid
 
-### 3. Mermaid 图表支持
+支持：
 
-支持 Mermaid 语法渲染流程图、时序图、甘特图等：
+- GitHub Flavored Markdown（GFM）
+- 标题、粗体、斜体、删除线、引用、列表、任务列表、表格、分割线
+- fenced code block 与语法高亮
+- KaTeX 行内/块级数学公式
+- Mermaid 流程图、时序图、甘特图等
+- 相对路径图片
+- 外部链接
 
-**流程图示例**：
-```mermaid
-graph TD
-    A[开始] --> B{判断}
-    B -->|是| C[处理]
-    B -->|否| D[结束]
-    C --> D
-```
+渲染后的代码块和 Mermaid 图表提供轻量的源码复制操作。Mermaid 使用较保守的安全配置，并限制异常大的图表输入。
 
-**时序图示例**：
-```mermaid
-sequenceDiagram
-    用户->>服务器: 发送请求
-    服务器->>数据库: 查询数据
-    数据库-->>服务器: 返回结果
-    服务器-->>用户: 响应数据
-```
+### Slash 命令
 
-**甘特图示例**：
-```mermaid
-gantt
-    title 项目进度
-    section 阶段1
-    需求分析 :a1, 2024-01-01, 7d
-    设计 :a2, after a1, 5d
-    section 阶段2
-    开发 :a3, after a2, 14d
-    测试 :a4, after a3, 7d
-```
+在空行开始输入 `/` 可打开命令菜单，快速插入：
 
-### 4. 双向链接 (Bi-directional Links)
+- 标题
+- 无序/有序列表
+- Todo
+- 引用
+- 代码块
+- 数学公式块
+- 表格
+- Mermaid
+- 链接和图片
+- Wiki Link
 
-类似 Obsidian 的双向引用功能：
+菜单支持键盘过滤、上下选择、Enter 确认和 Esc 关闭。
 
-**创建链接**：
-- 使用 `[[文件名]]` 语法创建链接
-- 例如：`[[项目计划]]` 链接到 "项目计划.md"
+### 任务列表直接交互
 
-**反向链接面板**：
-- 右侧面板显示当前文件的所有反向链接
-- 显示哪些文件引用了当前文件
-- 点击链接可快速跳转
-
-**功能特点**：
-- 自动检测链接目标是否存在
-- 支持跨文件导航
-- 显示链接上下文
-
-### 5. Excalidraw 绘图支持
-
-- **新建 Excalidraw 文件**：侧边栏点击"新建" → 选择"Excalidraw"
-- **手绘风格绘图**：支持手绘风格的图表、流程图、示意图
-- **实时保存**：绘图内容自动保存到 store
-- **主题适配**：自动跟随编辑器的亮色/暗色主题
-- **导出功能**：支持导出为 PNG、SVG 等格式
-
-**支持的文件格式**：
-- `.excalidraw` - Excalidraw 文件
-- `.excalidraw.json` - Excalidraw JSON 格式
-
-### 6. 撤销与重做
-
-- **撤销**：`Ctrl/Cmd + Z`
-- **重做**：`Ctrl/Cmd + Shift + Z` 或 `Ctrl/Cmd + Y`
-- 支持多级撤销历史
-
-### 7. 侧边栏与文件管理
-
-- **打开文件夹**：点击工具栏的"打开文件夹"图标，选择本地文件夹
-- **目录树**：左侧侧边栏显示文件夹下的所有文件和子目录（不再只显示 Markdown）
-- **文件切换**：点击侧边栏中的文件即可打开；文本文件进入编辑器，图片文件进入预览
-- **折叠/展开**：侧边栏支持折叠，最大化写作空间
-- **右键菜单**：支持创建、重命名、删除文件和文件夹
-- **文件类型图标**：Markdown/纯文本、图片、二进制、Excalidraw 均有不同图标
-- **自动导航**：创建新文件后自动打开该文件，无需手动点击
-
-**支持的文件能力**：
-- `markdown` / `text`：可编辑（WYSIWYG + 工具栏 + 双向链接）
-- `image`：可预览（主区域大图展示）
-- `pdf`：可在主区域内嵌预览
-- `excalidraw`：可绘图编辑
-- `binary`：可在目录中管理，当前提供友好占位提示
-
-### 8. 数学公式 (LaTeX) 支持
-
-支持完整的 LaTeX 数学公式输入，基于 KaTeX 高性能渲染。
-
-**行内公式**：使用 `$` 包裹
+渲染状态下可以直接点击 GFM task checkbox：
 
 ```markdown
-输入：$E = mc^2$
-显示：E = mc²
+- [ ] Todo
+- [x] Done
 ```
 
-### 8.1 列表编辑
+勾选状态会直接回写对应 Markdown 标记，不需要先切换到源码。
 
-- 列表与其他内容共用同一块编辑模型（WYSIWYG）
-- 保持标准 Markdown 输入行为，避免列表与段落出现不同交互模型
+## Local-first Workspace
 
-**块级公式**：使用 `$$` 包裹并换行
+### 打开真实本地目录
 
-```markdown
-输入：
-$$
-\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
-$$
+MarkFlow 使用浏览器 File System Access API 访问用户授权的文件夹：
+
+- 递归加载目录树
+- 创建文件/文件夹
+- 重命名
+- 删除
+- 保存到真实磁盘
+- 刷新页面后尝试恢复最近打开的目录
+- 浏览器权限失效时明确提示重新授权，而不是静默失败
+
+目录扫描默认跳过 `.git`、`node_modules`、`.next` 等明显不适合作为知识内容加载的目录。
+
+### 文件类型
+
+| 类型 | 支持 |
+|---|---|
+| Markdown / text | WYSIWYG + Source Mode 编辑 |
+| `.excalidraw` | Excalidraw 绘图 |
+| 图片 | 内嵌预览 |
+| PDF | 内嵌预览 |
+| 其他二进制文件 | 在目录树中浏览与管理 |
+
+### 保存与恢复
+
+文本编辑的基本生命周期是：
+
+```text
+edit
+  → mark dirty
+  → debounce
+  → write snapshot to disk
+  → verify that the saved snapshot is still current
+  → mark clean
 ```
 
-### 9. PDF 导出
+MarkFlow 会：
 
-- 点击工具栏右侧的"打印/导出"图标
-- 自动打开打印预览窗口
-- 选择"另存为 PDF"即可导出
+- 自动保存文本修改。
+- 切换文件时尝试立即刷出上一份 dirty 文件。
+- 页面隐藏时尝试保存活动文件。
+- 关闭页面前检查整个工作区，而不只检查当前文件。
+- 保留 `Ctrl/Cmd + S` 手动保存。
 
-### 10. 专注模式
+异步保存完成后只有在“写出的快照仍然是最新内容”时才会清除 dirty 标记，避免用户继续输入时旧保存结果覆盖新状态。
 
-- 点击工具栏的专注模式按钮
-- 自动隐藏侧边栏和工具栏，提供无干扰的写作环境
-- 按 `Esc` 键退出专注模式
+## Wiki Link 与知识库能力
 
-### 11. Dark Mode 切换
+支持：
 
-- 点击工具栏的太阳/月亮图标
-- 一键切换亮色/暗色主题
-- 自动保存主题偏好到本地存储
+```text
+[[Note]]
+[[Note.md]]
+[[folder/Note]]
+[[Note|显示文本]]
+```
 
-### 12. 查找功能
+当前能力包括：
 
-- **跨文件搜索**：搜索所有打开的文件内容
-- **快捷键**：`Ctrl+F` 打开搜索面板
-- **高亮匹配**：搜索结果高亮显示
-- **快速导航**：点击结果直接跳转到对应文件
+- 点击 Wiki Link 跳转目标文件。
+- 同名笔记优先按确定的路径/同目录规则解析。
+- 右侧 Backlinks 面板显示引用当前笔记的文件。
+- 重命名 Markdown 笔记时维护真正解析到该文件的 Wiki Link 引用。
+- 不使用简单的全局字符串替换，因此同名文件场景下更安全。
 
-### 13. 文件保存
+Backlinks 和链接关系都从 Markdown 源文本计算，不存成独立数据库。
 
-- **自动检测**：编辑后文件名旁显示橙色圆点
-- **快捷键保存**：`Ctrl+S` 保存当前文件
-- **真实保存**：打开文件夹后，文件会保存到实际磁盘
-- **离开提醒**：未保存时关闭页面会提示
+## 搜索与快速打开
 
-### 14. 刷新后自动恢复目录（新）
+### Quick Open
 
-- **自动记住上次打开的文件夹**：首次授权后会持久化目录句柄
-- **刷新自动恢复**：刷新页面后会尝试恢复目录结构与当前文件
-- **权限安全**：浏览器权限被收回时不会强行恢复，并会提示点击“打开”重新授权
+`Ctrl/Cmd + P` 打开 Quick Open：
 
-### 15. 多语言支持
+- 搜索工作区文件名和路径
+- 最近访问文件优先
+- Markdown、图片、PDF、Excalidraw 等统一打开
+- 显示当前文件与未保存状态
+- 可执行保存、全文搜索、专注模式、侧边栏切换等常用命令
 
-- **中英文切换**：点击工具栏的语言图标
-- **自动检测**：根据浏览器语言自动设置
-- **偏好保存**：语言选择保存到本地存储
+### 全文搜索
 
-## 🚀 快速开始
+`Ctrl/Cmd + F` 打开跨文件搜索：
+
+- 搜索当前工作区的文本内容
+- 展示匹配上下文
+- 点击结果直接进入对应文件
+- Enter / 上下导航会真正切换搜索结果，而不只是更新计数
+
+## Excalidraw
+
+MarkFlow 集成 `@excalidraw/excalidraw`：
+
+- 创建和编辑 `.excalidraw` 文件
+- 跟随亮色/暗色主题
+- 使用同一工作区文件树管理
+- 支持 Excalidraw 自带的图片导出能力
+
+## 常用快捷键
+
+| 快捷键 | 功能 |
+|---|---|
+| `Ctrl/Cmd + P` | Quick Open / Command Palette |
+| `Ctrl/Cmd + F` | 跨文件搜索 |
+| `Ctrl/Cmd + S` | 手动保存当前文件 |
+| `Ctrl/Cmd + Z` | 撤销 |
+| `Ctrl/Cmd + Shift + Z` / `Ctrl/Cmd + Y` | 重做 |
+| `Ctrl/Cmd + /` | WYSIWYG / Source Mode 切换 |
+| `Ctrl/Cmd + B` | 粗体 |
+| `Ctrl/Cmd + I` | 斜体 |
+| `Ctrl/Cmd + K` | 链接 |
+| `/`（空行） | Slash Menu |
+| `Enter` | 新段落 / 延续列表或引用 |
+| `Tab` | 缩进 |
+| `Esc` | 退出活动块；专注模式下退出专注模式 |
+
+## 技术栈
+
+- Next.js 16 / React 19
+- TypeScript 5
+- Tailwind CSS 4 + shadcn/ui
+- Zustand
+- react-markdown + remark-gfm + remark-math
+- KaTeX
+- react-syntax-highlighter
+- Mermaid 11
+- Excalidraw 0.18
+- File System Access API
+
+## 当前代码结构
+
+```text
+src/
+├── app/
+│   ├── page.tsx                    # 路由入口
+│   ├── layout.tsx                  # 全局 runtime / metadata
+│   ├── editor.css                  # 主编辑器视觉
+│   └── editor-polish.css           # 交互细节与 Source Mode 样式
+├── components/
+│   ├── workspace/
+│   │   └── WorkspacePage.tsx       # 应用壳层与编辑/预览布局
+│   └── editor/
+│       ├── TyporaEditor.tsx        # WYSIWYG / Source Mode 入口
+│       ├── TyporaEditorCore.tsx    # 块级编辑与键盘控制
+│       ├── markdown/
+│       │   ├── markdown-blocks.ts  # Markdown 语义块解析
+│       │   └── MarkdownRenderer.tsx
+│       ├── QuickOpen.tsx
+│       ├── PersistenceRuntime.tsx
+│       ├── WikiLinkRenameRuntime.tsx
+│       ├── Sidebar.tsx
+│       ├── Toolbar.tsx
+│       └── BacklinksPanel.tsx
+├── hooks/
+│   ├── useWorkspaceDirectory.ts
+│   └── useAppPreferences.ts
+├── lib/
+│   ├── file-system.ts
+│   ├── workspace-loader.ts
+│   ├── workspace-persistence.ts
+│   └── wiki-links.ts
+└── store/
+    └── editor-store.ts
+```
+
+更完整的工程边界见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，详细功能行为见 [`FEATURES.md`](FEATURES.md)。
+
+## 快速开始
 
 ### 环境要求
 
-- Node.js 18+ 或 Bun
-- Chrome、Edge 或其他支持 File System Access API 的浏览器
+- Node.js 24（CI 当前使用版本）
+- Chrome / Edge 等支持 File System Access API 的浏览器可获得完整本地工作区能力
 
-### 使用 Bun（推荐）
+### npm
 
 ```bash
-# 安装依赖
-bun install
-
-# 启动开发服务器
-bun run dev
-
-# 构建生产版本
-bun run build
+npm install --legacy-peer-deps
+npm run dev
 ```
 
-### 使用 npm
+验证：
 
 ```bash
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 构建生产版本
+npm run lint
 npm run build
 ```
 
-## 📖 使用指南
-
-### 基本操作
-
-1. **创建 Markdown 文件**：点击侧边栏的"新建" → 选择"Markdown" → 输入文件名 → 自动打开新文件
-2. **创建 Excalidraw 文件**：点击侧边栏的"新建" → 选择"Excalidraw" → 输入文件名 → 自动打开新文件
-3. **创建新文件夹**：点击侧边栏的"新建" → 选择"文件夹" → 输入文件夹名
-4. **打开本地文件夹**：点击工具栏的文件夹图标
-5. **保存文件**：`Ctrl+S` 或点击保存按钮
-
-### Markdown 格式化 Toggle
-
-| 操作 | 结果 |
-|------|------|
-| 选中 `文字` 点击粗体 | 变成 `**文字**` |
-| 选中 `**文字**` 点击粗体 | 变成 `文字`（移除格式） |
-| 没有选中文字点击粗体 | 插入 `****`，光标在中间 |
-
-### Markdown 语法支持
-
-| 功能 | 语法 | 工具栏按钮 |
-|------|------|--------|
-| 粗体 | `**文本**` | **B** |
-| 斜体 | `*文本*` | *I* |
-| 标题 1-3 | `# 标题` | H |
-| 代码 | `` `代码` `` | `</>` |
-| 链接 | `[文本](URL)` | 🔗 |
-| 图片 | `![描述](URL)` | 🖼️ |
-| 引用 | `> 引用内容` | " |
-| 无序列表 | `- 项目` | • |
-| 有序列表 | `1. 项目` | 1. |
-| 表格 | 见下方示例 | ⊞ |
-| 分割线 | `---` | — |
-
-### 编辑器快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `Enter` | 创建新块 |
-| `Backspace` | 删除空块 |
-| `Tab` | 插入缩进 |
-| `↑` (光标在行首) | 移动到上一块 |
-| `↓` (光标在行尾) | 移动到下一块 |
-| `Escape` | 退出编辑模式 / 退出专注模式 |
-| `Ctrl/Cmd + S` | 保存文件 |
-| `Ctrl/Cmd + F` | 打开搜索 |
-| `Ctrl/Cmd + Z` | 撤销 |
-| `Ctrl/Cmd + Shift + Z` | 重做 |
-| `Ctrl/Cmd + Y` | 重做 |
-| `/` (空行) | 打开命令菜单 |
-
-### 表格示例
-
-```markdown
-| 功能 | 状态 |
-|------|------|
-| WYSIWYG | ✅ |
-| Excalidraw | ✅ |
-| 数学公式 | ✅ |
-| PDF 导出 | ✅ |
-| Dark Mode | ✅ |
-| 查找功能 | ✅ |
-| 多语言 | ✅ |
-```
-
-### 代码块示例
-
-````markdown
-```javascript
-function greet(name) {
-  console.log(`Hello, ${name}!`);
-}
-```
-````
-
-## 🛠️ 技术栈
-
-- **框架**：Next.js 16 (App Router)
-- **语言**：TypeScript 5
-- **样式**：Tailwind CSS 4 + shadcn/ui
-- **Markdown 渲染**：react-markdown + remark-gfm
-- **数学公式**：KaTeX (rehype-katex)
-- **代码高亮**：react-syntax-highlighter
-- **绘图**：Excalidraw
-- **状态管理**：Zustand
-- **图标**：Lucide React
-
-## 📁 项目结构
-
-```
-src/
-├── app/
-│   ├── page.tsx          # 主页面
-│   ├── layout.tsx        # 布局组件
-│   └── globals.css       # 全局样式
-├── components/
-│   ├── editor/
-│   │   ├── TyporaEditor.tsx     # Markdown 编辑器
-│   │   ├── ExcalidrawEditor.tsx # Excalidraw 编辑器
-│   │   ├── Sidebar.tsx          # 侧边栏组件
-│   │   ├── Toolbar.tsx          # 工具栏组件
-│   │   └── SearchDialog.tsx     # 搜索对话框
-│   └── ui/                      # shadcn/ui 组件
-├── store/
-│   └── editor-store.ts          # Zustand 状态管理
-├── lib/
-│   └── i18n.ts                  # 国际化翻译
-└── hooks/                       # 自定义 Hooks
-```
-
-## 🎨 自定义样式
-
-编辑器支持通过 CSS 变量自定义主题：
-
-```css
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  /* 更多变量见 globals.css */
-}
-```
-
-## ⚠️ 浏览器兼容性
-
-| 功能 | Chrome/Edge | Firefox | Safari |
-|------|-------------|---------|--------|
-| 基本编辑 | ✅ | ✅ | ✅ |
-| 数学公式 | ✅ | ✅ | ✅ |
-| PDF 导出 | ✅ | ✅ | ✅ |
-| Dark Mode | ✅ | ✅ | ✅ |
-| 查找功能 | ✅ | ✅ | ✅ |
-| Excalidraw | ✅ | ✅ | ✅ |
-| 打开文件夹 | ✅ | ❌ | ❌ |
-| 保存到磁盘 | ✅ | ❌ | ❌ |
-
-> Firefox 和 Safari 不支持 File System Access API，无法打开本地文件夹。
-
-## 📱 响应式设计
-
-MarkFlow 支持多种设备和屏幕尺寸：
-
-- **桌面端**：完整功能体验，推荐使用 Chrome 或 Edge 浏览器
-- **平板电脑**：优化的触摸交互，支持横竖屏切换
-- **移动端**：适配小屏幕显示，提供简化的编辑体验
-
-**技术实现**：
-- 使用响应式 viewport 配置确保正确的缩放
-- Tailwind CSS 响应式类提供流畅的布局
-- 触摸友好的UI组件
-
-## 🔧 常见问题
-
-### Excalidraw 导出菜单问题
-
-**问题**：点击 "Export, preferences, and more..." 按钮时出现 React Error #130
-
-**解决方案**：已在最新版本中修复。确保使用的是 Excalidraw v0.18.0 或更高版本。
-
-### Slash 命令不工作
-
-**使用要求**：
-1. 必须在**空行**开头输入 `/`
-2. 确保当前处于编辑模式（点击任意块进入编辑）
-3. 使用键盘方向键 ↑↓ 选择命令，Enter 确认
-
-### 新建 Markdown 文件无法编辑
-
-**解决方法**：
-1. 确认文件已成功创建（侧边栏显示文件名）
-2. 点击文件名打开文件
-3. 点击任意渲染的内容块进入编辑模式
-
-## 🚀 部署指南
-
-### 方式一：Vercel 部署（推荐）
-
-Vercel 是 Next.js 的官方托管平台，部署最简单：
-
-1. **推送代码到 GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin https://github.com/your-username/your-repo.git
-   git push -u origin main
-   ```
-
-2. **连接 Vercel**
-   - 访问 [vercel.com](https://vercel.com)
-   - 使用 GitHub 账号登录
-   - 点击 "Import Project"
-   - 选择你的仓库
-   - 点击 "Deploy"
-
-3. **自动部署**
-   - 每次推送到 main 分支会自动部署
-   - PR 会生成预览链接
-
-### 方式二：Docker 部署
-
-**使用 Bun（推荐）：**
-
-```dockerfile
-FROM oven/bun:1 AS base
-WORKDIR /app
-
-FROM base AS deps
-COPY package.json bun.lockb ./
-RUN bun install --frozen-lockfile
-
-FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN bun run build
-
-FROM base AS runner
-ENV NODE_ENV=production
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-
-EXPOSE 3000
-CMD ["bun", "server.js"]
-```
-
-**构建并运行：**
+### Bun
 
 ```bash
-docker build -t markflow .
-docker run -p 3000:3000 markflow
+bun install
+bun run dev
+bun run build
 ```
 
-### 方式三：传统服务器部署
+## 浏览器说明
 
-```bash
-# 安装依赖
-bun install  # 或 npm install
+MarkFlow 的核心编辑与渲染是 Web 应用，但“直接打开并写回本地文件夹”依赖 File System Access API。
 
-# 构建
-bun run build  # 或 npm run build
+- Chromium 系浏览器：完整体验。
+- Safari / Firefox：部分 File System Access 能力不可用或行为不同。
 
-# 启动
-bun run start  # 或 npm run start
+如果未来提供桌面版，计划继续复用同一套 React/Markdown 编辑层，只替换工作区文件系统适配器，而不是维护第二套编辑器。
 
-# 使用 PM2 管理
-pm2 start bun --name "markflow" -- run start
-```
+## 当前工程方向
 
-## 📝 开发说明
+近期重点不是继续堆更多工具栏按钮，而是把已有能力做得更稳定、更接近真正的文档编辑器：
 
-### 代码规范
+1. 更精确的表格单元格编辑和光标映射。
+2. `Shift+Enter` 等细节与 Typora 的段落/硬换行语义进一步一致。
+3. 更好的 WYSIWYG / Source Mode 光标与滚动位置映射。
+4. 外部文件变化检测与 Workspace Refresh。
+5. 进一步统一文件 CRUD 的 typed result/error API。
+6. 为路径变换、Wiki Link、Markdown block parser 和键盘行为补测试。
+7. 评估 inline Markdown syntax 按焦点显隐的编辑模型，而不破坏 Markdown 文件作为唯一真源的原则。
+8. 稳定 Workspace Adapter 后再推进 Tauri 桌面打包。
 
-```bash
-# 运行 ESLint 检查
-bun run lint  # 或 npm run lint
-```
+## License
 
-### 数据库操作（如需要）
-
-```bash
-bun run db:push
-bun run db:generate
-```
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
-
-MIT License
-
----
-
-**享受写作和绘图的乐趣！** ✍️🎨
+请以仓库中实际的 License 文件为准；如果尚未添加 License，则默认不授予额外开源许可。
