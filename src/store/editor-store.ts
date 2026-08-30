@@ -1,5 +1,13 @@
 import { create } from 'zustand'
 import { Language, translations, TranslationKey } from '@/lib/i18n'
+import {
+  createEntryOnDisk,
+  getDirectoryHandleAtPath,
+  isValidEntryName,
+  parentPathOf,
+  removeEntryOnDisk,
+  renameEntryOnDisk,
+} from '@/lib/file-system'
 
 export type FileType = 'markdown' | 'excalidraw' | 'image' | 'text' | 'pdf' | 'binary'
 
@@ -7,37 +15,24 @@ export interface FileNode {
   id: string
   name: string
   type: 'file' | 'folder'
-  fileType?: FileType // Only for files
+  fileType?: FileType
   path: string
   children?: FileNode[]
-  content?: string // For markdown files
-  excalidrawData?: string // JSON string for Excalidraw files
-  blobUrl?: string // For image/binary preview from File System Access API
+  content?: string
+  excalidrawData?: string
+  blobUrl?: string
   mimeType?: string
-  handle?: FileSystemFileHandle // For saving to actual file system
+  handle?: FileSystemFileHandle
   isModified?: boolean
 }
 
-// Helper to detect file type from extension
 export function detectFileType(filename: string): FileType {
   const lowerName = filename.toLowerCase()
 
-  if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(lowerName)) {
-    return 'image'
-  }
-
-  if (/\.pdf$/i.test(lowerName)) {
-    return 'pdf'
-  }
-
-  if (filename.endsWith('.excalidraw') || filename.endsWith('.excalidraw.json')) {
-    return 'excalidraw'
-  }
-
-  if (/\.(md|markdown)$/i.test(lowerName)) {
-    return 'markdown'
-  }
-
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)$/i.test(lowerName)) return 'image'
+  if (/\.pdf$/i.test(lowerName)) return 'pdf'
+  if (lowerName.endsWith('.excalidraw') || lowerName.endsWith('.excalidraw.json')) return 'excalidraw'
+  if (/\.(md|markdown)$/i.test(lowerName)) return 'markdown'
   if (/\.(txt|json|yml|yaml|xml|html?|css|scss|less|js|jsx|ts|tsx|py|java|go|rs|c|cpp|h|hpp|sh|sql|toml|ini|conf)$/i.test(lowerName)) {
     return 'text'
   }
@@ -52,45 +47,29 @@ interface SearchState {
   currentIndex: number
 }
 
-// History for undo/redo
 interface HistoryState {
+  filePath: string | null
   past: string[]
   future: string[]
   maxHistory: number
 }
 
 interface EditorState {
-  // Theme
   theme: 'light' | 'dark' | 'system'
-  
-  // Language
   language: Language
-  
-  // Sidebar
   sidebarOpen: boolean
   sidebarWidth: number
-  
-  // Files
   files: FileNode[]
   currentFile: FileNode | null
   rootFolderName: string
   rootHandle: FileSystemDirectoryHandle | null
-  
-  // Editor
   content: string
   isEditing: boolean
-  
-  // UI
   showWordCount: boolean
   focusMode: boolean
-  
-  // Search
   search: SearchState
-  
-  // History for undo/redo
   history: HistoryState
-  
-  // Actions
+
   t: (key: TranslationKey) => string
   setTheme: (theme: 'light' | 'dark' | 'system') => void
   setLanguage: (language: Language) => void
@@ -109,15 +88,11 @@ interface EditorState {
   renameFile: (path: string, newName: string) => void
   saveCurrentFile: () => Promise<boolean>
   markFileModified: (path: string, modified: boolean) => void
-  
-  // Undo/Redo
   undo: () => void
   redo: () => void
   canUndo: () => boolean
   canRedo: () => boolean
   clearHistory: () => void
-  
-  // Search actions
   openSearch: () => void
   closeSearch: () => void
   setSearchQuery: (query: string) => void
@@ -126,7 +101,6 @@ interface EditorState {
   prevSearchResult: () => void
 }
 
-// Sample markdown content for demo
 const sampleContent = `# Welcome to MarkFlow
 
 这是一个 **WYSIWYG** Markdown 编辑器，支持实时渲染。
@@ -191,17 +165,102 @@ const defaultFile: FileNode = {
   fileType: 'markdown',
   path: '/Welcome.md',
   content: sampleContent,
-  isModified: false
+  isModified: false,
+}
+
+const emptyHistory = (filePath: string | null = null): HistoryState => ({
+  filePath,
+  past: [],
+  future: [],
+  maxHistory: 50,
+})
+
+function updateNodeByPath(
+  nodes: FileNode[],
+  path: string,
+  updater: (node: FileNode) => FileNode
+): FileNode[] {
+  return nodes.map(node => {
+    if (node.path === path) return updater(node)
+    if (!node.children) return node
+    return { ...node, children: updateNodeByPath(node.children, path, updater) }
+  })
+}
+
+function removeNodeByPath(nodes: FileNode[], path: string): FileNode[] {
+  return nodes
+    .filter(node => node.path !== path)
+    .map(node => node.children
+      ? { ...node, children: removeNodeByPath(node.children, path) }
+      : node)
+}
+
+function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
+  for (const node of nodes) {
+    if (node.path === path) return node
+    if (node.children) {
+      const match = findNodeByPath(node.children, path)
+      if (match) return match
+    }
+  }
+  return null
+}
+
+function replacePathPrefix(path: string, oldPrefix: string, newPrefix: string): string {
+  return path === oldPrefix ? newPrefix : `${newPrefix}${path.slice(oldPrefix.length)}`
+}
+
+function renameNodeTree(node: FileNode, oldPath: string, newPath: string, newName: string): FileNode {
+  const renamedPath = replacePathPrefix(node.path, oldPath, newPath)
+  return {
+    ...node,
+    id: renamedPath,
+    name: node.path === oldPath ? newName : node.name,
+    path: renamedPath,
+    fileType: node.path === oldPath && node.type === 'file' ? detectFileType(newName) : node.fileType,
+    children: node.children?.map(child => renameNodeTree(child, oldPath, newPath, newName)),
+  }
+}
+
+async function rebindFileHandles(
+  rootHandle: FileSystemDirectoryHandle,
+  node: FileNode
+): Promise<FileNode> {
+  if (node.type === 'file') {
+    const parent = await getDirectoryHandleAtPath(rootHandle, parentPathOf(node.path))
+    const handle = await parent.getFileHandle(node.name)
+    return { ...node, handle }
+  }
+
+  const children = node.children
+    ? await Promise.all(node.children.map(child => rebindFileHandles(rootHandle, child)))
+    : []
+  return { ...node, children }
+}
+
+function initialContentFor(name: string, fileType: FileType): string | undefined {
+  if (fileType === 'markdown') return `# ${name.replace(/\.(md|markdown)$/i, '')}\n\n`
+  if (fileType === 'text') return ''
+  return undefined
+}
+
+function initialExcalidrawData(): string {
+  return JSON.stringify({
+    type: 'excalidraw',
+    version: 2,
+    source: 'MarkFlow',
+    elements: [],
+    appState: {
+      viewBackgroundColor: '#ffffff',
+      currentItemFontFamily: 1,
+    },
+    files: {},
+  })
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
-  // Theme
   theme: 'system',
-  
-  // Language
   language: 'zh',
-  
-  // Initial state
   sidebarOpen: true,
   sidebarWidth: 260,
   files: [defaultFile],
@@ -212,26 +271,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isEditing: false,
   showWordCount: true,
   focusMode: false,
-  
-  // Search
   search: {
     isOpen: false,
     query: '',
     results: [],
-    currentIndex: 0
+    currentIndex: 0,
   },
-  
-  // History for undo/redo
-  history: {
-    past: [],
-    future: [],
-    maxHistory: 50
-  },
-  
-  // Theme actions
+  history: emptyHistory(defaultFile.path),
+
   setTheme: (theme) => {
     set({ theme })
-    // Apply theme to document
     const root = document.documentElement
     if (theme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -241,428 +290,398 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     localStorage.setItem('theme', theme)
   },
-  
-  // Translation function
-  t: (key) => {
-    const { language } = get()
-    return translations[language][key]
-  },
-  
-  // Language actions
+
+  t: (key) => translations[get().language][key],
+
   setLanguage: (language) => {
     set({ language })
     localStorage.setItem('language', language)
   },
-  
-  // Actions
-  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  
+
+  toggleSidebar: () => set(state => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
-  
   setFiles: (files) => set({ files }),
-  
-  setCurrentFile: (file) => set({ 
-    currentFile: file,
-    content: file?.content || '',
-    // Note: Excalidraw data is stored in file.excalidrawData
-  }),
-  
   setRootFolderName: (name) => set({ rootFolderName: name }),
-  
   setRootHandle: (handle) => set({ rootHandle: handle }),
-  
+
+  setCurrentFile: (file) => {
+    const previousPath = get().currentFile?.path ?? null
+    const nextPath = file?.path ?? null
+    set({
+      currentFile: file,
+      content: file?.content || '',
+      history: previousPath === nextPath ? get().history : emptyHistory(nextPath),
+    })
+  },
+
   setContent: (content) => {
-    const { history } = get()
-    // Add current content to history
+    const state = get()
+    const filePath = state.currentFile?.path ?? null
+    const history = state.history.filePath === filePath ? state.history : emptyHistory(filePath)
     set({
       content,
       history: {
         ...history,
-        past: [...history.past, get().content].slice(-history.maxHistory),
-        future: [] // Clear future on new change
-      }
-    })
-  },
-  
-  updateCurrentFileContent: (content) => {
-    const { currentFile, files, history } = get()
-    if (!currentFile) return
-    
-    const updatedFile = { ...currentFile, content, isModified: true }
-    
-    const updateFileContent = (nodes: FileNode[]): FileNode[] => {
-      return nodes.map(node => {
-        if (node.path === currentFile.path) {
-          return { ...node, content, isModified: true }
-        }
-        if (node.children) {
-          return { ...node, children: updateFileContent(node.children) }
-        }
-        return node
-      })
-    }
-    
-    // Get current content before update
-    const currentContent = get().content
-    
-    set({
-      content,
-      currentFile: updatedFile,
-      files: updateFileContent(files),
-      history: {
-        ...history,
-        past: [...history.past, currentContent].slice(-history.maxHistory),
-        future: [] // Clear future on new change
-      }
-    })
-  },
-  
-  updateExcalidrawData: (data) => {
-    const { currentFile, files } = get()
-    if (!currentFile) return
-    
-    const updatedFile = { ...currentFile, excalidrawData: data, isModified: true }
-    
-    const updateFileData = (nodes: FileNode[]): FileNode[] => {
-      return nodes.map(node => {
-        if (node.path === currentFile.path) {
-          return { ...node, excalidrawData: data, isModified: true }
-        }
-        if (node.children) {
-          return { ...node, children: updateFileData(node.children) }
-        }
-        return node
-      })
-    }
-    
-    set({
-      currentFile: updatedFile,
-      files: updateFileData(files)
-    })
-  },
-  
-  toggleFocusMode: () => set((state) => ({ 
-    focusMode: !state.focusMode,
-    sidebarOpen: state.focusMode ? true : false
-  })),
-  
-  addFile: (parentPath, name, type) => {
-    const { files, rootHandle } = get()
-    const fileType = detectFileType(name)
-    
-    // Default Excalidraw data
-    const defaultExcalidrawData = JSON.stringify({
-      type: 'excalidraw',
-      version: 2,
-      source: 'MarkFlow',
-      elements: [],
-      appState: {
-        viewBackgroundColor: '#ffffff',
-        currentItemFontFamily: 1
+        past: [...history.past, state.content].slice(-history.maxHistory),
+        future: [],
       },
-      files: {}
     })
-    
-    const newFile: FileNode = {
-      id: Date.now().toString(),
-      name,
-      type,
-      fileType: type === 'file' ? fileType : undefined,
-      path: parentPath === '/' ? `/${name}` : `${parentPath}/${name}`,
-      content: type === 'file' && (fileType === 'markdown' || fileType === 'text') ? `# ${name.replace(/\.md$/, '')}\n\n` : undefined,
-      excalidrawData: type === 'file' && fileType === 'excalidraw' ? defaultExcalidrawData : undefined,
-      children: type === 'folder' ? [] : undefined,
-      isModified: false
-    }
-    
-    const addToTree = (nodes: FileNode[]): FileNode[] => {
-      return nodes.map(node => {
-        if (node.path === parentPath && node.type === 'folder') {
-          return { ...node, children: [...(node.children || []), newFile] }
-        }
-        if (node.children) {
-          return { ...node, children: addToTree(node.children) }
-        }
-        return node
-      })
-    }
-    
-    if (parentPath === '/') {
-      set({ files: [...files, newFile] })
-    } else {
-      set({ files: addToTree(files) })
-    }
-    
-    // Automatically navigate to the newly created file
-    if (type === 'file') {
-      set({ 
-        currentFile: newFile,
-        content: newFile.content || ''
-      })
-    }
-    
-    // Create file in file system if handle exists
-    if (rootHandle && type === 'file') {
-      rootHandle.getFileHandle(name, { create: true }).catch(console.error)
-    }
   },
-  
-  deleteFile: (path) => {
-    const { files, currentFile } = get()
-    
-    const deleteFromTree = (nodes: FileNode[]): FileNode[] => {
-      return nodes.filter(node => {
-        if (node.path === path) return false
-        if (node.children) {
-          return { ...node, children: deleteFromTree(node.children) }
-        }
-        return true
-      })
+
+  updateCurrentFileContent: (content) => {
+    const state = get()
+    if (!state.currentFile) return
+
+    const filePath = state.currentFile.path
+    const history = state.history.filePath === filePath ? state.history : emptyHistory(filePath)
+    const updatedCurrentFile = { ...state.currentFile, content, isModified: true }
+
+    set({
+      content,
+      currentFile: updatedCurrentFile,
+      files: updateNodeByPath(state.files, filePath, node => ({ ...node, content, isModified: true })),
+      history: {
+        ...history,
+        past: [...history.past, state.content].slice(-history.maxHistory),
+        future: [],
+      },
+    })
+  },
+
+  updateExcalidrawData: (data) => {
+    const state = get()
+    if (!state.currentFile) return
+    const filePath = state.currentFile.path
+    set({
+      currentFile: { ...state.currentFile, excalidrawData: data, isModified: true },
+      files: updateNodeByPath(state.files, filePath, node => ({
+        ...node,
+        excalidrawData: data,
+        isModified: true,
+      })),
+    })
+  },
+
+  toggleFocusMode: () => set(state => ({
+    focusMode: !state.focusMode,
+    sidebarOpen: state.focusMode,
+  })),
+
+  addFile: (parentPath, rawName, type) => {
+    const name = rawName.trim()
+    if (!isValidEntryName(name)) {
+      console.error('Invalid file or folder name:', rawName)
+      return
     }
-    
-    const newFiles = files.filter(node => node.path !== path).map(node => {
-      if (node.children) {
-        return { ...node, children: deleteFromTree(node.children) }
+
+    const performAdd = async () => {
+      const state = get()
+      const fileType = type === 'file' ? detectFileType(name) : undefined
+      const path = parentPath === '/' ? `/${name}` : `${parentPath}/${name}`
+      if (findNodeByPath(state.files, path)) {
+        console.error(`An entry already exists at ${path}`)
+        return
       }
-      return node
-    })
-    
-    set({ 
-      files: newFiles,
-      currentFile: currentFile?.path === path ? null : currentFile
-    })
-  },
-  
-  renameFile: (path, newName) => {
-    const { files, currentFile } = get()
-    
-    // Helper to update paths of children when parent folder is renamed
-    const updateChildPaths = (children: FileNode[], oldParentPath: string, newParentPath: string): FileNode[] => {
-      return children.map(child => {
-        const newChildPath = child.path.replace(oldParentPath, newParentPath)
-        return {
-          ...child,
-          path: newChildPath,
-          children: child.children 
-            ? updateChildPaths(child.children, oldParentPath, newParentPath) 
-            : undefined
+
+      const content = type === 'file' && fileType ? initialContentFor(name, fileType) : undefined
+      const excalidrawData = type === 'file' && fileType === 'excalidraw' ? initialExcalidrawData() : undefined
+      let handle: FileSystemFileHandle | undefined
+
+      try {
+        if (state.rootHandle) {
+          const created = await createEntryOnDisk(
+            state.rootHandle,
+            parentPath,
+            name,
+            type,
+            excalidrawData ?? content ?? ''
+          )
+          handle = created ?? undefined
         }
+      } catch (error) {
+        console.error('Failed to create entry on disk:', error)
+        return
+      }
+
+      const newNode: FileNode = {
+        id: path,
+        name,
+        type,
+        fileType,
+        path,
+        content,
+        excalidrawData,
+        children: type === 'folder' ? [] : undefined,
+        handle,
+        isModified: false,
+      }
+
+      const latest = get()
+      const files = parentPath === '/'
+        ? [...latest.files, newNode]
+        : updateNodeByPath(latest.files, parentPath, node => ({
+            ...node,
+            children: [...(node.children || []), newNode],
+          }))
+
+      if (type === 'file') {
+        set({
+          files,
+          currentFile: newNode,
+          content: newNode.content || '',
+          history: emptyHistory(newNode.path),
+        })
+      } else {
+        set({ files })
+      }
+    }
+
+    void performAdd()
+  },
+
+  deleteFile: (path) => {
+    const performDelete = async () => {
+      const state = get()
+      const target = findNodeByPath(state.files, path)
+      if (!target) return
+
+      try {
+        if (state.rootHandle) {
+          await removeEntryOnDisk(state.rootHandle, path, target.type)
+        }
+      } catch (error) {
+        console.error('Failed to delete entry on disk:', error)
+        return
+      }
+
+      const latest = get()
+      const removesCurrent = latest.currentFile
+        ? latest.currentFile.path === path || latest.currentFile.path.startsWith(`${path}/`)
+        : false
+
+      set({
+        files: removeNodeByPath(latest.files, path),
+        currentFile: removesCurrent ? null : latest.currentFile,
+        content: removesCurrent ? '' : latest.content,
+        history: removesCurrent ? emptyHistory(null) : latest.history,
       })
     }
-    
-    const renameInTree = (nodes: FileNode[]): FileNode[] => {
-      return nodes.map(node => {
-        if (node.path === path) {
-          const parentPath = path.substring(0, path.lastIndexOf('/'))
-          const newPath = parentPath === '' ? `/${newName}` : `${parentPath}/${newName}`
-          const renamedNode = { ...node, name: newName, path: newPath }
-          
-          // If it's a folder, update all children paths
-          if (node.children && node.children.length > 0) {
-            renamedNode.children = updateChildPaths(node.children, path, newPath)
-          }
-          
-          return renamedNode
+
+    void performDelete()
+  },
+
+  renameFile: (path, rawNewName) => {
+    const newName = rawNewName.trim()
+    if (!isValidEntryName(newName)) {
+      console.error('Invalid file or folder name:', rawNewName)
+      return
+    }
+
+    const performRename = async () => {
+      const state = get()
+      const target = findNodeByPath(state.files, path)
+      if (!target || target.name === newName) return
+
+      const parentPath = parentPathOf(path)
+      const newPath = parentPath === '/' ? `/${newName}` : `${parentPath}/${newName}`
+      if (findNodeByPath(state.files, newPath)) {
+        console.error(`An entry already exists at ${newPath}`)
+        return
+      }
+
+      let renamedRoot = renameNodeTree(target, path, newPath, newName)
+
+      try {
+        if (state.rootHandle) {
+          const newFileHandle = await renameEntryOnDisk(state.rootHandle, path, newName, target.type)
+          renamedRoot = target.type === 'file'
+            ? { ...renamedRoot, handle: newFileHandle ?? undefined }
+            : await rebindFileHandles(state.rootHandle, renamedRoot)
         }
-        if (node.children) {
-          return { ...node, children: renameInTree(node.children) }
-        }
+      } catch (error) {
+        console.error('Failed to rename entry on disk:', error)
+        return
+      }
+
+      const replaceRenamedNode = (nodes: FileNode[]): FileNode[] => nodes.map(node => {
+        if (node.path === path) return renamedRoot
+        if (node.children) return { ...node, children: replaceRenamedNode(node.children) }
         return node
       })
+
+      const latest = get()
+      const currentPath = latest.currentFile?.path
+      const currentInsideTarget = currentPath === path || Boolean(currentPath?.startsWith(`${path}/`))
+      const nextCurrentPath = currentInsideTarget && currentPath
+        ? replacePathPrefix(currentPath, path, newPath)
+        : currentPath
+      const files = replaceRenamedNode(latest.files)
+      const currentFile = nextCurrentPath ? findNodeByPath(files, nextCurrentPath) : latest.currentFile
+
+      set({
+        files,
+        currentFile,
+        content: currentFile?.content ?? latest.content,
+        history: currentInsideTarget ? emptyHistory(nextCurrentPath ?? null) : latest.history,
+      })
     }
-    
-    const updatedFiles = renameInTree([...files])
-    const updatedCurrentFile = currentFile?.path === path 
-      ? { ...currentFile, name: newName }
-      : currentFile
-    
-    set({ files: updatedFiles, currentFile: updatedCurrentFile })
+
+    void performRename()
   },
-  
+
   saveCurrentFile: async () => {
-    const { currentFile, content, files } = get()
-    if (!currentFile) return false
-    
-    // Determine content to save based on file type
-    const dataToSave = currentFile.fileType === 'excalidraw' 
-      ? currentFile.excalidrawData || '{}' 
-      : content
-    
-    // If we have a file handle, save to actual file
-    if (currentFile.handle) {
+    const state = get()
+    if (!state.currentFile) return false
+
+    const dataToSave = state.currentFile.fileType === 'excalidraw'
+      ? state.currentFile.excalidrawData || '{}'
+      : state.content
+
+    if (state.currentFile.handle) {
       try {
-        const writable = await currentFile.handle.createWritable()
+        const writable = await state.currentFile.handle.createWritable()
         await writable.write(dataToSave)
         await writable.close()
-        
-        // Mark as not modified
-        const updatedFile = { ...currentFile, isModified: false }
-        const updateModified = (nodes: FileNode[]): FileNode[] => {
-          return nodes.map(node => {
-            if (node.path === currentFile.path) {
-              return { ...node, isModified: false }
-            }
-            if (node.children) {
-              return { ...node, children: updateModified(node.children) }
-            }
-            return node
-          })
-        }
-        
-        set({
-          currentFile: updatedFile,
-          files: updateModified(files)
-        })
-        
-        return true
-      } catch (err) {
-        console.error('Failed to save file:', err)
+      } catch (error) {
+        console.error('Failed to save file:', error)
         return false
       }
     }
-    
-    // No file handle - content is stored in memory only
-    // Mark as saved in memory
-    const updatedFile = { ...currentFile, isModified: false }
-    set({ currentFile: updatedFile })
+
+    const latest = get()
+    const currentPath = latest.currentFile?.path
+    if (!currentPath) return false
+    const currentFile = { ...latest.currentFile, isModified: false }
+
+    set({
+      currentFile,
+      files: updateNodeByPath(latest.files, currentPath, node => ({ ...node, isModified: false })),
+    })
     return true
   },
-  
+
   markFileModified: (path, modified) => {
-    const { files, currentFile } = get()
-    
-    const markInTree = (nodes: FileNode[]): FileNode[] => {
-      return nodes.map(node => {
-        if (node.path === path) {
-          return { ...node, isModified: modified }
-        }
-        if (node.children) {
-          return { ...node, children: markInTree(node.children) }
-        }
-        return node
-      })
-    }
-    
+    const state = get()
     set({
-      files: markInTree(files),
-      currentFile: currentFile?.path === path 
-        ? { ...currentFile, isModified: modified }
-        : currentFile
+      files: updateNodeByPath(state.files, path, node => ({ ...node, isModified: modified })),
+      currentFile: state.currentFile?.path === path
+        ? { ...state.currentFile, isModified: modified }
+        : state.currentFile,
     })
   },
-  
-  // Search actions
-  openSearch: () => set((state) => ({ 
-    search: { ...state.search, isOpen: true, query: '', results: [], currentIndex: 0 }
+
+  openSearch: () => set(state => ({
+    search: { ...state.search, isOpen: true, query: '', results: [], currentIndex: 0 },
   })),
-  
-  closeSearch: () => set((state) => ({ 
-    search: { ...state.search, isOpen: false }
+
+  closeSearch: () => set(state => ({
+    search: { ...state.search, isOpen: false },
   })),
-  
-  setSearchQuery: (query) => set((state) => ({ 
-    search: { ...state.search, query }
+
+  setSearchQuery: (query) => set(state => ({
+    search: { ...state.search, query },
   })),
-  
+
   searchInFiles: () => {
-    const { files, search } = get()
-    if (!search.query.trim()) {
-      set({ search: { ...search, results: [], currentIndex: 0 } })
+    const state = get()
+    const query = state.search.query.trim().toLowerCase()
+    if (!query) {
+      set({ search: { ...state.search, results: [], currentIndex: 0 } })
       return
     }
-    
-    const results: { path: string; line: number; content: string }[] = []
-    const query = search.query.toLowerCase()
-    
-    const searchInNode = (node: FileNode) => {
+
+    const results: SearchState['results'] = []
+    const visit = (node: FileNode) => {
       if (node.type === 'file' && node.content) {
-        const lines = node.content.split('\n')
-        lines.forEach((line, index) => {
+        node.content.split('\n').forEach((line, index) => {
           if (line.toLowerCase().includes(query)) {
-            results.push({
-              path: node.path,
-              line: index + 1,
-              content: line.trim()
-            })
+            results.push({ path: node.path, line: index + 1, content: line.trim() })
           }
         })
       }
-      if (node.children) {
-        node.children.forEach(searchInNode)
-      }
+      node.children?.forEach(visit)
     }
-    
-    files.forEach(searchInNode)
-    
-    set({ search: { ...search, results, currentIndex: 0 } })
+    state.files.forEach(visit)
+
+    set({ search: { ...state.search, results, currentIndex: 0 } })
   },
-  
-  nextSearchResult: () => set((state) => {
-    const { search } = state
-    if (search.results.length === 0) return state
-    const nextIndex = (search.currentIndex + 1) % search.results.length
-    return { search: { ...search, currentIndex: nextIndex } }
+
+  nextSearchResult: () => set(state => {
+    if (state.search.results.length === 0) return state
+    return {
+      search: {
+        ...state.search,
+        currentIndex: (state.search.currentIndex + 1) % state.search.results.length,
+      },
+    }
   }),
-  
-  prevSearchResult: () => set((state) => {
-    const { search } = state
-    if (search.results.length === 0) return state
-    const prevIndex = search.currentIndex === 0 ? search.results.length - 1 : search.currentIndex - 1
-    return { search: { ...search, currentIndex: prevIndex } }
+
+  prevSearchResult: () => set(state => {
+    if (state.search.results.length === 0) return state
+    return {
+      search: {
+        ...state.search,
+        currentIndex: state.search.currentIndex === 0
+          ? state.search.results.length - 1
+          : state.search.currentIndex - 1,
+      },
+    }
   }),
-  
-  // Undo/Redo actions
+
   undo: () => {
-    const { history, content } = get()
-    if (history.past.length === 0) return
-    
-    const previous = history.past[history.past.length - 1]
-    const newPast = history.past.slice(0, -1)
-    
+    const state = get()
+    const currentPath = state.currentFile?.path
+    if (!currentPath || state.history.filePath !== currentPath || state.history.past.length === 0) return
+
+    const previous = state.history.past[state.history.past.length - 1]
+    const history = {
+      ...state.history,
+      past: state.history.past.slice(0, -1),
+      future: [state.content, ...state.history.future],
+    }
+
     set({
       content: previous,
-      history: {
-        ...history,
-        past: newPast,
-        future: [content, ...history.future]
-      }
+      currentFile: { ...state.currentFile, content: previous, isModified: true },
+      files: updateNodeByPath(state.files, currentPath, node => ({ ...node, content: previous, isModified: true })),
+      history,
     })
   },
-  
+
   redo: () => {
-    const { history, content } = get()
-    if (history.future.length === 0) return
-    
-    const next = history.future[0]
-    const newFuture = history.future.slice(1)
-    
+    const state = get()
+    const currentPath = state.currentFile?.path
+    if (!currentPath || state.history.filePath !== currentPath || state.history.future.length === 0) return
+
+    const next = state.history.future[0]
+    const history = {
+      ...state.history,
+      past: [...state.history.past, state.content].slice(-state.history.maxHistory),
+      future: state.history.future.slice(1),
+    }
+
     set({
       content: next,
-      history: {
-        ...history,
-        past: [...history.past, content],
-        future: newFuture
-      }
+      currentFile: { ...state.currentFile, content: next, isModified: true },
+      files: updateNodeByPath(state.files, currentPath, node => ({ ...node, content: next, isModified: true })),
+      history,
     })
   },
-  
-  canUndo: () => get().history.past.length > 0,
-  
-  canRedo: () => get().history.future.length > 0,
-  
-  clearHistory: () => set({
-    history: {
-      past: [],
-      future: [],
-      maxHistory: 50
-    }
-  })
+
+  canUndo: () => {
+    const state = get()
+    return Boolean(state.currentFile) && state.history.filePath === state.currentFile?.path && state.history.past.length > 0
+  },
+
+  canRedo: () => {
+    const state = get()
+    return Boolean(state.currentFile) && state.history.filePath === state.currentFile?.path && state.history.future.length > 0
+  },
+
+  clearHistory: () => set({ history: emptyHistory(get().currentFile?.path ?? null) }),
 }))
 
-// Initialize theme from localStorage
 if (typeof window !== 'undefined') {
   const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | 'system' | null
-  if (savedTheme) {
-    useEditorStore.getState().setTheme(savedTheme)
-  }
+  if (savedTheme) useEditorStore.getState().setTheme(savedTheme)
 }
