@@ -156,14 +156,16 @@ export function MarkdownRenderer({
         ),
         input: ({ type, checked, ...props }) => {
           if (type !== 'checkbox') {
-            return <input type={type} checked={checked} readOnly {...props} />
+            return <input {...props} type={type} checked={checked} readOnly />
           }
 
           return (
             <input
+              {...props}
               type="checkbox"
               checked={Boolean(checked)}
               disabled={!onTaskToggle}
+              readOnly={!onTaskToggle}
               tabIndex={onTaskToggle ? 0 : -1}
               className="markflow-task-checkbox"
               aria-label={checked ? 'Mark task incomplete' : 'Mark task complete'}
@@ -177,7 +179,6 @@ export function MarkdownRenderer({
                 const taskIndex = checkboxes.indexOf(event.currentTarget)
                 if (taskIndex >= 0) onTaskToggle?.(taskIndex, event.currentTarget.checked)
               }}
-              {...props}
             />
           )
         },
