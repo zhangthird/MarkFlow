@@ -131,11 +131,18 @@ export function MarkdownRenderer({
       rehypePlugins={[rehypeKatex]}
       components={{
         pre: ({ children }) => <>{children}</>,
-        code: ({ className, children, ...props }) => {
+        code: ({ className, children, node, ...props }) => {
           const languageMatch = /language-([\w-]+)/.exec(className || '')
           const language = languageMatch?.[1]
-          const codeString = String(children).replace(/\n$/, '')
-          const isInline = !languageMatch && !codeString.includes('\n')
+          const rawCode = String(children)
+          const sourceSpansLines = Boolean(
+            node?.position && node.position.start.line !== node.position.end.line
+          )
+          const isBlock = Boolean(languageMatch)
+            || rawCode.endsWith('\n')
+            || rawCode.includes('\n')
+            || sourceSpansLines
+          const codeString = rawCode.replace(/\n$/, '')
 
           if (language === 'mermaid') {
             return (
@@ -149,7 +156,7 @@ export function MarkdownRenderer({
             )
           }
 
-          if (isInline) {
+          if (!isBlock) {
             return <code className="markflow-inline-code" {...props}>{children}</code>
           }
 
