@@ -100,12 +100,15 @@ export function PersistenceRuntime() {
   }, [content, currentFile, language])
 
   // Switching documents used to cancel a pending save. Flush the previous
-  // document snapshot on file switches so a dirty file is not left behind.
+  // document snapshot only when its old path still exists. Rename/delete
+  // operations intentionally replace or remove that path, so writing its stale
+  // handle would be both unnecessary and misleading.
   useEffect(() => {
     const unsubscribe = useEditorStore.subscribe((state, previousState) => {
       const previousFile = previousState.currentFile
       if (!previousFile?.handle || !previousFile.isModified) return
       if (previousFile.path === state.currentFile?.path) return
+      if (!findNodeByPath(state.files, previousFile.path)) return
 
       void persistSnapshot(previousFile, previousState.content).then(success => {
         if (!success) {
