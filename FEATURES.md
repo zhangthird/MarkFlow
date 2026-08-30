@@ -201,6 +201,20 @@ HTTP(S) / data / blob URL 保持原样。
 
 目录 handle 会存入 IndexedDB。刷新恢复时只查询已有权限；如果权限失效，要求用户重新执行打开目录操作。
 
+### Workspace Refresh
+
+Quick Open 提供“从磁盘刷新工作区”。它用于接收 VS Code、Explorer 或其他外部工具对工作区文件产生的变化。
+
+当前 refresh policy：
+
+1. 递归收集整个 workspace 的 dirty file path。
+2. 只要存在任意 dirty file，就取消 refresh，不覆盖 MarkFlow 内存中的未保存编辑。
+3. clean workspace 才重新执行 `scanWorkspaceDirectory`，让磁盘重新成为当前 snapshot。
+4. 原 current file path 仍存在时继续保持该文件；否则选择第一个可用文件。
+5. 接受新 snapshot 后重置当前 undo history，并清空 stale search query/result。
+
+MarkFlow 尚未维护 base/local/disk 三方版本，因此 dirty 状态下不会自动猜测 merge 结果。后续如果加入 conflict UX，应建立显式 diff/choice，而不是放宽这一安全约束。
+
 ### File types
 
 | Type | Behavior |
@@ -317,7 +331,7 @@ Backlinks 由 Markdown source 推导，不单独持久化 graph database。
 - recent files ranking；
 - open Markdown/image/PDF/Excalidraw；
 - dirty/current indicators；
-- save/search/focus/sidebar commands。
+- save/search/workspace refresh/focus/sidebar commands。
 
 ### Full-text search
 
@@ -392,6 +406,7 @@ npm install
 - table source mapping edge cases；
 - keyboard transition tests；
 - autosave race tests；
+- workspace refresh dirty/scan edge cases；
 - browser/File System Access integration tests。
 
 ## 16. 当前边界
@@ -403,7 +418,7 @@ MarkFlow 已经形成稳定的 block-level mixed editor，但尚不是完整 inl
 - `**bold**`、`[link](url)`、inline math 等 meta syntax 在活动块层级显露，而不是只在当前 inline token 获得 focus 时显露。
 - 普通 rendered DOM → source position 仍以启发式映射为主；table cell 已有专门 range mapping。
 - WYSIWYG / Source Mode 目前按 scroll ratio 保持位置，而不是 exact source position / selection mapping。
-- 浏览器没有通用 filesystem watch，因此外部修改还需要 Workspace Refresh/diff。
+- Workspace Refresh 已能安全重新扫描 clean workspace，但尚没有 filesystem watch、三方 diff 或 conflict resolution UI。
 - typed CRUD result 目前仍是 UI-facing adapter，尚未完全下沉到 store action boundary。
 - desktop WorkspaceAdapter / Tauri shell 尚未正式加入。
 
