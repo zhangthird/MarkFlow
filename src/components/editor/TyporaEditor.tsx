@@ -25,6 +25,12 @@ function resizeSourceTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = `${Math.max(textarea.scrollHeight, window.innerHeight - 150)}px`
 }
 
+function removeIndent(line: string) {
+  if (line.startsWith('\t')) return { line: line.slice(1), removed: 1 }
+  const spaces = line.match(/^ {1,2}/)?.[0].length ?? 0
+  return { line: line.slice(spaces), removed: spaces }
+}
+
 export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
   function TyporaEditor({ content, onChange, sourceMode = false }, ref) {
     const blockEditorRef = useRef<TyporaEditorRef>(null)
@@ -99,6 +105,48 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
       const value = textarea.value
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1
+
+      if (event.shiftKey) {
+        if (start === end) {
+          const lineEndCandidate = value.indexOf('\n', start)
+          const lineEnd = lineEndCandidate === -1 ? value.length : lineEndCandidate
+          const currentLine = value.slice(lineStart, lineEnd)
+          const result = removeIndent(currentLine)
+          if (result.removed === 0) return
+
+          const nextContent = value.slice(0, lineStart) + result.line + value.slice(lineEnd)
+          const nextCursor = Math.max(lineStart, start - result.removed)
+          onChange(nextContent)
+          requestAnimationFrame(() => {
+            const nextTextarea = sourceTextareaRef.current
+            if (!nextTextarea) return
+            nextTextarea.focus()
+            nextTextarea.setSelectionRange(nextCursor, nextCursor)
+            resizeSourceTextarea(nextTextarea)
+          })
+          return
+        }
+
+        const selectedLines = value.slice(lineStart, end).split('\n')
+        const results = selectedLines.map(removeIndent)
+        const nextSelectionText = results.map(result => result.line).join('\n')
+        const removedTotal = results.reduce((sum, result) => sum + result.removed, 0)
+        if (removedTotal === 0) return
+
+        const nextContent = value.slice(0, lineStart) + nextSelectionText + value.slice(end)
+        const nextStart = Math.max(lineStart, start - results[0].removed)
+        const nextEnd = Math.max(nextStart, end - removedTotal)
+        onChange(nextContent)
+        requestAnimationFrame(() => {
+          const nextTextarea = sourceTextareaRef.current
+          if (!nextTextarea) return
+          nextTextarea.focus()
+          nextTextarea.setSelectionRange(nextStart, nextEnd)
+          resizeSourceTextarea(nextTextarea)
+        })
+        return
+      }
 
       if (start === end) {
         const nextContent = value.slice(0, start) + '  ' + value.slice(end)
@@ -113,7 +161,6 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         return
       }
 
-      const lineStart = value.lastIndexOf('\n', start - 1) + 1
       const selectedLines = value.slice(lineStart, end).split('\n')
       const indented = selectedLines.map(line => `  ${line}`).join('\n')
       const nextContent = value.slice(0, lineStart) + indented + value.slice(end)
