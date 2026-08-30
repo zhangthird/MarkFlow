@@ -1,18 +1,16 @@
 # MarkFlow Architecture
 
-This document records the product and engineering boundaries that should remain stable as MarkFlow grows. It is intentionally more structural than `README.md` or `FEATURES.md`.
+This document records the engineering boundaries that should remain stable as MarkFlow grows. `README.md` is the project entry; `FEATURES.md` describes user-visible behavior; this file describes state ownership, persistence, editor boundaries, testing, and future adapters.
 
 ## Product direction
 
 MarkFlow is a **local-first knowledge workspace built around ordinary files**.
 
-Markdown is the primary authoring format. Excalidraw, Mermaid, images, PDFs, Wiki links, backlinks, search, and command navigation extend the same workspace instead of creating separate data silos.
-
 The main invariant is:
 
 > The file on disk is the source of truth; editor state is an interactive working copy.
 
-A MarkFlow workspace should remain readable by other tools without an export step.
+Markdown, Excalidraw, Mermaid, images, PDFs, Wiki Links, backlinks, search, and command navigation belong to one workspace rather than separate application databases.
 
 ## Current architecture
 
@@ -39,11 +37,11 @@ Browser / future desktop shell
      |                               |
      v                               v
 +--------------------------+   +---------------------------+
-| Editor layer             |   | Persistence runtime       |
+| Editor layer             |   | PersistenceRuntime        |
 | TyporaEditor wrapper     |   | debounced autosave        |
 | TyporaEditorCore         |   | switch/visibility flush   |
-| MarkdownRenderer         |   | unload protection         |
-| markdown-blocks parser   |   +-------------+-------------+
+| markdown-blocks parser   |   | unload protection         |
+| MarkdownRenderer         |   +-------------+-------------+
 | Excalidraw               |                 |
 +------------+-------------+                 v
              |                    +-------------------------+
@@ -59,72 +57,62 @@ Browser / future desktop shell
                                       Local workspace files
 ```
 
-## Application shell boundary
+## Application shell
 
-`src/app/page.tsx` is intentionally a thin route entry.
+`src/app/page.tsx` stays a thin route entry.
 
-The main workspace UI lives in:
-
-```text
-src/components/workspace/WorkspacePage.tsx
-```
-
-`WorkspacePage` coordinates:
+`src/components/workspace/WorkspacePage.tsx` coordinates:
 
 - editor / preview selection;
-- sidebar and backlinks layout;
+- Sidebar / Backlinks layout;
 - focus mode;
-- WYSIWYG / Source Mode selection;
+- WYSIWYG / Source Mode choice;
 - workspace-opening hook integration;
-- document-level status information.
+- document status / counters.
 
-It should not absorb filesystem traversal or Markdown parsing again.
+It should not absorb filesystem traversal or Markdown parsing.
 
 ## Core state invariants
 
-### 1. One path identifies one workspace node
+### One path identifies one workspace node
 
 `FileNode.path` is the canonical workspace identity.
 
-Renaming a folder therefore requires updating every descendant path. The UI must not retain a stale `currentFile` object after rename/delete.
+Folder rename must update descendant paths, and current UI state must not retain stale nodes after rename/delete.
 
-### 2. Editor history belongs to one document
+### Undo/redo belongs to one document
 
-Undo/redo is file-scoped.
+History is file-scoped. A document switch must never allow edits from the previous document to undo in the next document.
 
-Switching from A.md to B.md must never allow B.md to undo A.md content.
+Content mutations keep these views coherent:
 
-The store updates content consistently across:
-
-- top-level editor content;
-- `currentFile`;
-- corresponding file-tree node;
+- top-level editor `content`;
+- `currentFile` content;
+- matching file-tree node;
 - dirty state.
 
-### 3. Dirty means memory is newer than known disk state
+### Dirty means memory is newer than the confirmed disk snapshot
 
 ```text
 isModified = true
 ```
 
-means the in-memory snapshot differs from the last confirmed disk snapshot.
-
-A save can clear dirty only if the snapshot that completed writing is still the newest snapshot. This prevents the following race:
+A save may clear dirty only when the snapshot that finished writing is still the latest content.
 
 ```text
 write snapshot A
-  user types snapshot B
+user produces snapshot B
 write A finishes
-  -> must NOT mark B clean
+→ B must remain dirty
 ```
 
-### 4. File-tree mutations and disk mutations must agree
+### Disk and file-tree mutations must agree
 
-For a real local workspace, create/delete/rename should not report success until the expected tree state appears after the disk operation.
+For an opened local workspace, UI success should represent a real postcondition, not merely that an async operation was started.
 
-Filesystem primitives live in `src/lib/file-system.ts`.
+Filesystem primitives belong in `src/lib/file-system.ts`.
 
-UI-facing structured operation results live in `src/lib/file-operations.ts`:
+The current UI-facing operation adapter in `src/lib/file-operations.ts` exposes:
 
 ```text
 success
@@ -136,36 +124,32 @@ unchanged
 io_error
 ```
 
-This layer currently waits for the store/file tree to reach the expected postcondition, allowing Sidebar UI to avoid obvious false-success messages.
-
-A future cleanup should move the same typed result contract closer to the underlying store/filesystem action instead of relying on observation after fire-and-forget store methods.
+It waits for expected file-tree state before reporting success. A future cleanup should move this typed result contract directly onto the store/filesystem action boundary instead of observing fire-and-forget actions from outside.
 
 ## Persistence lifecycle
 
-For text documents:
+Text documents follow:
 
 ```text
 edit
-  -> update current document + tree node
-  -> mark dirty
-  -> debounce
-  -> write a captured snapshot
-  -> compare written snapshot with latest state
-  -> clear dirty only if they still match
+  → update working copy + tree node
+  → mark dirty
+  → debounce
+  → write captured snapshot
+  → compare with latest state
+  → clear dirty only if still current
 ```
 
 Additional rules:
 
 - switching documents attempts to flush the previous dirty local file;
-- document visibility changes attempt to flush the active file;
-- before unload, the entire workspace tree is inspected for dirty files;
-- manual save remains available but uses the same snapshot semantics.
+- visibility changes attempt to flush the active file;
+- before unload, the whole workspace tree is checked for dirty files;
+- manual save uses the same snapshot semantics.
 
-This logic belongs in `PersistenceRuntime`, not in individual editor components.
+This belongs in `PersistenceRuntime`, not in editor components.
 
 ## Workspace lifecycle
-
-Workspace responsibilities are deliberately split:
 
 ```text
 useWorkspaceDirectory
@@ -177,35 +161,27 @@ useWorkspaceDirectory
                IndexedDB directory handle / last file
 ```
 
-The loader skips obvious generated/internal directories such as:
+The loader skips generated/internal directories such as `.git`, `node_modules`, and `.next`.
 
-- `.git`
-- `node_modules`
-- `.next`
+Passive startup only queries existing File System Access permission. It does not call `requestPermission()` without a user gesture.
 
-Directory restoration must not call `requestPermission()` during passive startup. Browsers commonly require that permission requests originate from a user gesture. Startup therefore queries existing permission and asks the user to reopen the directory if authorization was lost.
+## Filesystem semantics
 
-## File-system semantics
-
-`src/lib/file-system.ts` is the current browser File System Access API adapter.
-
-It owns:
+`src/lib/file-system.ts` owns browser File System Access API operations:
 
 - nested directory traversal;
-- name validation;
-- creation at the correct parent path;
-- recursive deletion;
+- filename validation;
+- create at the correct parent path;
+- recursive delete;
 - duplicate detection;
-- file rename;
-- directory rename and descendant handle rebinding.
+- file/directory rename;
+- descendant handle rebinding.
 
-The browser API does not expose a sufficiently portable native rename primitive. MarkFlow therefore uses conservative copy-then-delete semantics. The original entry must remain intact if copying fails.
+Because browsers do not expose a sufficiently portable native rename primitive, current rename uses conservative copy-then-delete. Copy failure must leave the original entry intact.
 
-This browser-specific layer should eventually implement a generic workspace adapter rather than being referenced directly by future desktop code.
+Browser-specific filesystem code should remain behind a small boundary so a future desktop shell can replace it without forking the editor.
 
 ## Markdown editor boundary
-
-The editor is split into focused layers instead of one large `TyporaEditor.tsx`.
 
 ```text
 Markdown source
@@ -228,76 +204,69 @@ keyboard/selection     GFM/KaTeX/code/Mermaid
           WYSIWYG / Source Mode
 ```
 
-### TyporaEditor wrapper
+### TyporaEditor
 
-`TyporaEditor.tsx` chooses between:
-
-- block-level WYSIWYG;
-- full-document Source Code Mode.
-
-Both receive the same `content` and `onChange`; there is no second document model.
+`TyporaEditor.tsx` chooses between block-level WYSIWYG and full-document Source Mode. Both operate on the same `content` and `onChange`; there is no second durable document model.
 
 ### TyporaEditorCore
 
 Owns:
 
 - active-block editing;
-- block-to-block keyboard movement;
 - paragraph creation;
-- Markdown hard-line-break insertion for paragraph/list/blockquote source;
+- Enter / Shift+Enter semantics;
 - list/task/quote continuation;
-- slash menu integration;
-- source selection/caret behavior;
-- rendered-table-cell to source-cell range mapping;
-- complex-block live preview.
+- block-to-block keyboard movement;
+- source selection / caret behavior;
+- rendered-table-cell → source-cell mapping;
+- Slash Menu integration;
+- complex-block live Preview.
 
 It must not perform workspace persistence.
 
 ### markdown-blocks.ts
 
-Owns Markdown source partitioning into editable semantic ranges.
-
-Parser behavior should stay deterministic because editor range updates depend on source line identity.
+Owns deterministic source partitioning into semantic editable ranges. Parser stability matters because edit range updates depend on source line identity.
 
 ### MarkdownRenderer
 
-Owns rendered output and rendering-specific interactions:
+Owns rendering and rendering-specific interactions:
 
 - react-markdown / GFM;
-- math / KaTeX;
+- KaTeX;
 - syntax highlighting;
 - Mermaid;
 - Wiki Link rendering;
 - task checkbox interaction;
-- table cell click routing back to the editing controller;
-- relative local image resolution hooks;
-- rendered code/Mermaid copy actions.
+- table cell click routing;
+- local relative-image hooks;
+- code / Mermaid Copy actions.
 
-## WYSIWYG model and its current limit
+## WYSIWYG model and its limit
 
-The current editor is a **block-level mixed editor**, not a complete inline rich-text engine.
+The editor is a **block-level mixed editor**:
 
 ```text
-inactive block -> rendered DOM
-active block   -> Markdown source textarea
+inactive block → rendered DOM
+active block   → Markdown source textarea
 ```
 
-This provides strong Markdown fidelity with relatively simple state semantics, but it has a known boundary: inline meta syntax such as `**`, `[]()`, and `$...$` is exposed at block granularity rather than only around the focused inline token.
+This retains predictable Markdown serialization and local-file fidelity, but inline meta syntax such as `**`, `[]()`, and `$...$` is still exposed at block granularity rather than only around the focused inline token.
 
-Table cells are an intentional exception to the generic click heuristic: rendered table coordinates are mapped back to source row/cell ranges, and the corresponding Markdown cell is selected when editing begins. The mapping skips the GFM divider row and ignores escaped pipes / pipes inside backtick spans when locating delimiters.
+Table cells intentionally have a more precise mapping than generic blocks: rendered row/cell coordinates are mapped back to source ranges while skipping the GFM divider row and ignoring escaped/code-span pipes.
 
-Before replacing this design with ProseMirror/Lexical/contenteditable, any proposal must preserve:
+Any future inline editing model must preserve:
 
-1. Markdown files as the only durable source;
-2. predictable source serialization;
+1. Markdown files as the only durable content model;
+2. deterministic source serialization;
 3. Wiki Link syntax;
 4. Mermaid/math blocks;
-5. local relative image paths;
+5. relative local image paths;
 6. current undo/autosave semantics.
 
-A future inline editing model should preferably be driven by source-position-aware Markdown AST information rather than regex-only DOM editing.
+A source-position-aware Markdown AST is preferable to regex-only DOM mutation for that future step.
 
-## Source Code Mode
+## Source Mode
 
 Source Mode is an explicit view, not a fallback triggered by formatting actions.
 
@@ -309,11 +278,11 @@ WYSIWYG  Source Mode
 undo / dirty / autosave
 ```
 
-Mode switching should preserve the user’s document position as closely as possible. The current implementation preserves normalized scroll progress; a future improvement can map exact source positions between rendered and source views.
+Current switching preserves normalized scroll progress. Exact source-position / selection mapping remains a future improvement.
 
-## Wiki-link model
+## Wiki Link model
 
-Wiki-link parsing and resolution live in `src/lib/wiki-links.ts`.
+Parsing and resolution live in `src/lib/wiki-links.ts`.
 
 Supported forms:
 
@@ -327,48 +296,59 @@ Supported forms:
 Resolution is deterministic:
 
 1. explicit workspace-relative path;
-2. exact filename or filename without extension;
-3. source-note directory preference for duplicate names;
-4. deterministic fallback candidate.
+2. exact filename / filename without extension;
+3. same-directory preference for duplicate names;
+4. deterministic fallback.
 
-Backlinks are derived from Markdown source rather than stored as independent graph data.
+Backlinks are derived from Markdown source.
 
-### Rename refactoring
-
-Renaming a Markdown note can rewrite Wiki Links that actually resolved to the renamed target before the operation.
-
-This intentionally avoids naive global replacement in duplicate-name workspaces.
-
-The rename runtime should execute only when a rename occurs; normal typing must not cause whole-workspace rename scans.
+Rename refactoring rewrites only links that actually resolved to the renamed file before the rename. Normal typing must not trigger whole-workspace rename scans.
 
 ## Search and navigation
 
-MarkFlow currently has two related navigation surfaces:
+Full-text Search is derived from the loaded in-memory workspace tree.
 
-### Full-text Search
+Quick Open (`Ctrl/Cmd+P`) combines filename/path matching, recent-file ranking, file opening, and selected commands. These surfaces should continue using the same canonical file-opening semantics.
 
-Derived from the in-memory workspace tree and used for content matching/navigation.
+## Mermaid security
 
-### Quick Open / Command Palette
+Markdown may come from arbitrary local folders. Mermaid therefore remains untrusted document input.
 
-`Ctrl/Cmd + P` combines:
+The renderer uses a strict security level plus text/edge limits. New features should not silently relax this boundary to enable arbitrary callbacks or embedded HTML.
 
-- filename/path lookup;
-- recency ranking;
-- file opening;
-- selected workspace/editor commands.
+## Regression testing
 
-Recent-file state is browser-local metadata, not part of the workspace content model.
+The repository now has a first dependency-free regression layer using Node 24's built-in `node:test`.
 
-Future navigation features should continue using the same file-opening semantics rather than introducing independent selection models.
+```text
+CI
+→ install
+→ lint
+→ core tests
+→ production build
+```
 
-## Mermaid security boundary
+Current `tests/core-semantics.test.mjs` directly exercises existing TypeScript source and covers:
 
-MarkFlow can open Markdown from arbitrary local folders, so Mermaid content should be treated as untrusted document input.
+- semantic Markdown block grouping;
+- paragraph/list/table/fenced-code ranges;
+- Wiki Link extraction and alias metadata;
+- duplicate-name resolution with same-directory preference;
+- rename rewriting only for links that resolve to the renamed note;
+- workspace path helper semantics;
+- filename validation.
 
-The renderer uses a strict Mermaid security level and size/edge limits. New Mermaid features should not silently relax this boundary to enable HTML or callbacks.
+This intentionally starts with pure logic that can run without a DOM or browser filesystem mock.
 
-## Desktop application boundary
+Next testing priorities:
+
+1. table source mapping edge cases;
+2. editor keyboard transitions including hard breaks and block merge;
+3. autosave snapshot races;
+4. filesystem create/rename/delete with deterministic mock handles;
+5. browser integration for File System Access and mode switching.
+
+## Desktop boundary
 
 Desktop packaging should not fork the editor.
 
@@ -384,56 +364,24 @@ Browser FS Access API          Tauri filesystem
             store / editor / search
 ```
 
-Shared across browser and desktop:
+Shared code should include React UI, Markdown parsing/rendering, Zustand state semantics, Wiki Link logic, search/navigation, and persistence concepts.
 
-- React UI;
-- Markdown block model;
-- renderer;
-- Zustand state semantics;
-- Wiki Link logic;
-- search/navigation;
-- persistence lifecycle concepts.
-
-Desktop-only concerns:
-
-- native filesystem adapter;
-- windows/menus;
-- updater;
-- OS integration;
-- file watching if available.
-
-## Testing priorities
-
-The project has CI lint + production build validation, but regression-sensitive editor logic still needs focused automated tests.
-
-Highest-value targets:
-
-1. `file-system.ts` path/create/delete/rename semantics;
-2. `file-operations.ts` result/postcondition behavior;
-3. `wiki-links.ts` duplicate-name resolution and rename rewriting;
-4. `markdown-blocks.ts` ranges for paragraphs/lists/code/math/tables;
-5. editor keyboard transitions (Enter, Shift+Enter, list continuation, Backspace merge);
-6. table source-cell mapping including escaped/code-span pipes;
-7. save snapshot race behavior.
+Desktop-only concerns include native filesystem access, windows/menus, updater, OS integration, and filesystem watching.
 
 ## Current engineering roadmap
 
-Already completed items should not remain in the roadmap. The current priorities are:
+Completed features should not remain listed as future work. The current priorities are:
 
-1. **Source/render position mapping** — move from scroll-ratio preservation toward source-position-aware WYSIWYG/Source Mode transitions.
-2. **Workspace Refresh** — rescan and diff external filesystem changes without overwriting local dirty edits.
-3. **Typed CRUD at the action boundary** — replace fire-and-forget store CRUD with promises returning typed operation results directly.
-4. **Automated tests** — cover parser, path mutation, Wiki Link resolution, table source mapping, keyboard transitions, and persistence races.
-5. **Inline syntax focus model** — evaluate source-position-aware inline marker reveal/hide while retaining Markdown as the only durable model.
-6. **WorkspaceAdapter + Tauri** — add the abstraction first, then desktop packaging/local storage integration.
-7. **Dependency cleanup** — reconcile lockfile/dependency drift and React-19/Excalidraw peer ranges independently of editor feature PRs.
+1. **Source/render position mapping** — replace scroll-ratio-only WYSIWYG/Source transitions with source-position-aware restoration.
+2. **Workspace Refresh** — rescan/diff external filesystem changes without overwriting dirty in-memory edits.
+3. **Typed CRUD at the action boundary** — make the underlying actions return structured results directly.
+4. **Test expansion** — keyboard, table mapping, persistence races, mock filesystem, and browser integration.
+5. **Inline syntax focus model** — reveal/hide Markdown markers around focused inline tokens while retaining Markdown as the only durable model.
+6. **WorkspaceAdapter + Tauri** — stabilize the adapter before adding a desktop shell.
+7. **Dependency cleanup** — reconcile lockfile drift and React 19 / Excalidraw peer ranges separately from feature changes.
 
 ## CI / dependency note
 
-GitHub Actions currently validates:
+GitHub Actions currently validates dependency installation, ESLint / React Compiler rules, core semantic tests, and a production Next.js build.
 
-- dependency installation;
-- ESLint / React Compiler rules;
-- production Next.js build.
-
-The repository still has dependency compatibility debt around some packages (notably Excalidraw peer ranges against React 19), so CI uses a compatibility install path. Dependency cleanup should remain a dedicated change rather than being mixed with filesystem/editor correctness work.
+The repository still has dependency compatibility debt, notably Excalidraw peer ranges against React 19 and existing lockfile drift. CI intentionally uses a compatibility install path until that cleanup is handled as its own change.
