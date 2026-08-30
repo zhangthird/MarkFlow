@@ -48,6 +48,7 @@ Browser / future desktop shell
              |                    | Workspace / FS layer    |
              |                    | workspace-loader        |
              |                    | workspace-persistence   |
+             |                    | workspace-refresh       |
              |                    | file-system             |
              |                    | file-operations         |
              |                    +------------+------------+
@@ -158,12 +159,41 @@ useWorkspaceDirectory
         |      directory traversal / FileNode creation
         |
         +--> workspace-persistence
-               IndexedDB directory handle / last file
+        |      IndexedDB directory handle / last file
+        |
+        +--> workspace-refresh
+               explicit clean-state disk rescan
 ```
 
 The loader skips generated/internal directories such as `.git`, `node_modules`, and `.next`.
 
 Passive startup only queries existing File System Access permission. It does not call `requestPermission()` without a user gesture.
+
+### Workspace Refresh safety boundary
+
+`src/lib/workspace-refresh.ts` owns explicit disk refresh semantics.
+
+The current model intentionally refuses to refresh whenever any file in the loaded tree has `isModified = true`.
+
+```text
+refresh requested
+      |
+      v
+collect dirty paths
+  |           |
+ dirty       clean
+  |           |
+ cancel      rescan disk
+              |
+              v
+      replace clean snapshot
+      restore current path
+      reset history/search
+```
+
+This policy exists because MarkFlow does not yet retain a base/local/disk triple for three-way conflict resolution. Silently replacing or heuristically merging a dirty working copy would violate the local-first safety invariant.
+
+A future external-change feature may add filesystem watch and explicit diff/conflict UI, but it should preserve the rule that unresolved local edits are never discarded implicitly.
 
 ## Filesystem semantics
 
@@ -308,7 +338,7 @@ Rename refactoring rewrites only links that actually resolved to the renamed fil
 
 Full-text Search is derived from the loaded in-memory workspace tree.
 
-Quick Open (`Ctrl/Cmd+P`) combines filename/path matching, recent-file ranking, file opening, and selected commands. These surfaces should continue using the same canonical file-opening semantics.
+Quick Open (`Ctrl/Cmd+P`) combines filename/path matching, recent-file ranking, file opening, and selected commands, including explicit Workspace Refresh. These surfaces should continue using the same canonical file-opening and workspace-operation semantics.
 
 ## Mermaid security
 
@@ -345,8 +375,9 @@ Next testing priorities:
 1. table source mapping edge cases;
 2. editor keyboard transitions including hard breaks and block merge;
 3. autosave snapshot races;
-4. filesystem create/rename/delete with deterministic mock handles;
-5. browser integration for File System Access and mode switching.
+4. workspace refresh dirty/scan edge cases;
+5. filesystem create/rename/delete with deterministic mock handles;
+6. browser integration for File System Access and mode switching.
 
 ## Desktop boundary
 
@@ -373,9 +404,9 @@ Desktop-only concerns include native filesystem access, windows/menus, updater, 
 Completed features should not remain listed as future work. The current priorities are:
 
 1. **Source/render position mapping** — replace scroll-ratio-only WYSIWYG/Source transitions with source-position-aware restoration.
-2. **Workspace Refresh** — rescan/diff external filesystem changes without overwriting dirty in-memory edits.
-3. **Typed CRUD at the action boundary** — make the underlying actions return structured results directly.
-4. **Test expansion** — keyboard, table mapping, persistence races, mock filesystem, and browser integration.
+2. **Typed CRUD at the action boundary** — make the underlying actions return structured results directly.
+3. **Test expansion** — keyboard, table mapping, persistence races, workspace refresh, mock filesystem, and browser integration.
+4. **External-change conflict UX** — extend explicit Workspace Refresh toward diff/conflict handling without overwriting dirty edits.
 5. **Inline syntax focus model** — reveal/hide Markdown markers around focused inline tokens while retaining Markdown as the only durable model.
 6. **WorkspaceAdapter + Tauri** — stabilize the adapter before adding a desktop shell.
 7. **Dependency cleanup** — reconcile lockfile drift and React 19 / Excalidraw peer ranges separately from feature changes.
