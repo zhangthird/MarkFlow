@@ -1,72 +1,90 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useState } from 'react'
 
 interface MermaidRendererProps {
   code: string
   isDark: boolean
 }
 
+const MERMAID_MAX_TEXT_SIZE = 50_000
+const MERMAID_MAX_EDGES = 500
+
 export function MermaidRenderer({ code, isDark }: MermaidRendererProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const reactId = useId()
   const [error, setError] = useState<string | null>(null)
-  const [svg, setSvg] = useState<string>('')
-  
+  const [svg, setSvg] = useState('')
+
   useEffect(() => {
-    let mounted = true
-    
+    let active = true
+
     const renderDiagram = async () => {
       try {
         const mermaid = (await import('mermaid')).default
-        
+
+        // MarkFlow can open arbitrary local Markdown workspaces. Keep Mermaid in
+        // its strict trust mode so diagram text cannot opt into HTML/callback
+        // behavior, and retain explicit complexity limits for defensive rendering.
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? 'dark' : 'default',
-          securityLevel: 'loose',
-          fontFamily: 'inherit'
+          securityLevel: 'strict',
+          fontFamily: 'inherit',
+          maxTextSize: MERMAID_MAX_TEXT_SIZE,
+          maxEdges: MERMAID_MAX_EDGES,
+          suppressErrorRendering: true,
         })
-        
-        const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`
-        const { svg } = await mermaid.render(id, code)
-        
-        if (mounted) {
-          setSvg(svg)
+
+        // React useId is stable for this component instance. Strip punctuation
+        // so the identifier also remains safe for Mermaid/SVG selector usage.
+        const diagramId = `mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`
+        const result = await mermaid.render(diagramId, code)
+
+        if (active) {
+          setSvg(result.svg)
           setError(null)
         }
-      } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : 'Failed to render diagram')
+      } catch (renderError) {
+        if (active) {
+          setError(renderError instanceof Error ? renderError.message : 'Failed to render diagram')
           setSvg('')
         }
       }
     }
-    
-    renderDiagram()
-    
+
+    void renderDiagram()
+
     return () => {
-      mounted = false
+      active = false
     }
-  }, [code, isDark])
-  
+  }, [code, isDark, reactId])
+
   if (error) {
     return (
-      <div className="text-red-500 text-sm p-4 bg-red-500/10 rounded-lg">
-        <div className="font-medium mb-1">Mermaid Error</div>
-        <div className="text-xs">{error}</div>
+      <div className="rounded-lg bg-red-500/10 p-4 text-sm text-red-500" role="alert">
+        <div className="mb-1 font-medium">Mermaid Error</div>
+        <div className="break-words text-xs">{error}</div>
       </div>
     )
   }
-  
+
+  if (!svg) {
+    return (
+      <div
+        className="min-h-12 animate-pulse rounded-lg bg-muted/40"
+        aria-label="Rendering Mermaid diagram"
+      />
+    )
+  }
+
   return (
-    <div 
-      ref={containerRef}
+    <div
       className="mermaid-container overflow-x-auto"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   )
 }
 
-// Parse mermaid code block
 export function isMermaidBlock(code: string): boolean {
   const firstLine = code.split('\n')[0]?.trim()
   return firstLine === 'mermaid' || firstLine?.startsWith('mermaid ')
