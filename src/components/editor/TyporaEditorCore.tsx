@@ -75,10 +75,10 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       if (editingLineIndex === null || !lineTextareaRef.current) return
       const textarea = lineTextareaRef.current
       textarea.focus()
-      const pos = editingLineValue.length
+      const pos = textarea.value.length
       textarea.selectionStart = pos
       textarea.selectionEnd = pos
-    }, [editingLineIndex, editingLineValue.length])
+    }, [editingLineIndex])
 
     useImperativeHandle(ref, () => ({
       getTextarea: () => textareaRef.current,
