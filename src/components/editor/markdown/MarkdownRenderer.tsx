@@ -60,6 +60,7 @@ interface MarkdownRendererProps {
   content: string
   isDark: boolean
   onWikiLinkClick?: (target: string) => void
+  onTaskToggle?: (taskIndex: number, checked: boolean) => void
   resolveImageSrc?: (src?: string) => string | undefined
 }
 
@@ -67,6 +68,7 @@ export function MarkdownRenderer({
   content,
   isDark,
   onWikiLinkClick,
+  onTaskToggle,
   resolveImageSrc,
 }: MarkdownRendererProps) {
   return (
@@ -152,16 +154,34 @@ export function MarkdownRenderer({
             <table>{children}</table>
           </div>
         ),
-        input: ({ type, checked, ...props }) => (
-          <input
-            type={type}
-            checked={checked}
-            readOnly
-            tabIndex={-1}
-            className="markflow-task-checkbox"
-            {...props}
-          />
-        ),
+        input: ({ type, checked, ...props }) => {
+          if (type !== 'checkbox') {
+            return <input {...props} type={type} checked={checked} readOnly />
+          }
+
+          return (
+            <input
+              {...props}
+              type="checkbox"
+              checked={Boolean(checked)}
+              disabled={!onTaskToggle}
+              readOnly={!onTaskToggle}
+              tabIndex={onTaskToggle ? 0 : -1}
+              className="markflow-task-checkbox"
+              aria-label={checked ? 'Mark task incomplete' : 'Mark task complete'}
+              onClick={event => event.stopPropagation()}
+              onChange={event => {
+                event.stopPropagation()
+                const block = event.currentTarget.closest('.markflow-block')
+                const checkboxes = block
+                  ? Array.from(block.querySelectorAll<HTMLInputElement>('.markflow-task-checkbox'))
+                  : []
+                const taskIndex = checkboxes.indexOf(event.currentTarget)
+                if (taskIndex >= 0) onTaskToggle?.(taskIndex, event.currentTarget.checked)
+              }}
+            />
+          )
+        },
         img: ({ src, alt }) => {
           const resolvedSrc = resolveImageSrc?.(typeof src === 'string' ? src : undefined) || src
           if (typeof resolvedSrc !== 'string' || !resolvedSrc) return null

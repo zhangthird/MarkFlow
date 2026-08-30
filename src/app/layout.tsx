@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./editor.css";
+import "./editor-polish.css";
 import { Toaster } from "@/components/ui/sonner";
 import { PersistenceRuntime } from "@/components/editor/PersistenceRuntime";
 import { QuickOpen } from "@/components/editor/QuickOpen";
