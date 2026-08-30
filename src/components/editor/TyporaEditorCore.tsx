@@ -149,6 +149,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     const activeBlock = editingRange
       ? contentBlocks.find(block => block.startLine === editingRange.startLine) ?? null
       : null
+    const activeBlockKind = activeBlock?.kind ?? null
     const activeSource = editingRange
       ? content.split('\n').slice(editingRange.startLine, editingRange.endLine + 1).join('\n')
       : ''
@@ -378,7 +379,36 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       return true
     }, [content, contentBlocks, editingRange, onChange])
 
-    const handleSourceKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const createNextParagraph = useCallback((textarea: HTMLTextAreaElement) => {
+      if (!editingRange) return false
+
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const source = textarea.value
+      const before = source.slice(0, start)
+      const after = source.slice(end)
+      const nextValue = `${before}\n\n${after}`
+      const result = replaceLineRange(content, editingRange, nextValue)
+      const linesBeforeCursor = before.split('\n').length - 1
+      const nextStartLine = editingRange.startLine + linesBeforeCursor + 2
+      const nextEndLine = nextStartLine + Math.max(0, after.split('\n').length - 1)
+
+      lastActiveStartRef.current = nextStartLine
+      pendingSelectionRef.current = { start: 0, end: 0 }
+      setEditingRange({ startLine: nextStartLine, endLine: nextEndLine })
+      onChange(result.content)
+
+      requestAnimationFrame(() => {
+        const nextTextarea = sourceTextareaRef.current
+        if (!nextTextarea) return
+        nextTextarea.focus()
+        nextTextarea.setSelectionRange(0, 0)
+        resizeTextarea(nextTextarea)
+      })
+      return true
+    }, [content, editingRange, onChange])
+
+    const handleSourceKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = event.currentTarget
 
       if (showSlashMenu && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)) return
@@ -447,7 +477,8 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         return
       }
 
-      if (event.key !== 'Enter' || event.shiftKey) return
+      if (event.key !== 'Enter') return
+      if (event.shiftKey || activeBlockKind === 'code' || activeBlockKind === 'math' || activeBlockKind === 'table') return
 
       const cursor = textarea.selectionStart
       const source = textarea.value
@@ -461,6 +492,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       const todoMatch = beforeCursor.match(/^(\s*)[-+*]\s+\[(?: |x|X)\]\s+(.*)$/)
       const unorderedMatch = beforeCursor.match(/^(\s*)([-+*])\s+(.*)$/)
       const orderedMatch = beforeCursor.match(/^(\s*)(\d+)([.)])\s+(.*)$/)
+      const quoteMatch = beforeCursor.match(/^(\s*>\s?)(.*)$/)
 
       let continuation: string | null = null
       let itemContent = ''
@@ -474,29 +506,44 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       } else if (orderedMatch) {
         continuation = `${orderedMatch[1]}${Number(orderedMatch[2]) + 1}${orderedMatch[3]} `
         itemContent = orderedMatch[4]
+      } else if (quoteMatch) {
+        continuation = quoteMatch[1]
+        itemContent = quoteMatch[2]
       }
 
-      if (continuation === null) return
-      event.preventDefault()
+      if (continuation !== null) {
+        event.preventDefault()
 
-      if (itemContent.trim() === '' && afterCursor.trim() === '' && fullLine.trim() !== '') {
-        const nextValue = source.slice(0, lineStart) + source.slice(lineEnd)
+        if (itemContent.trim() === '' && afterCursor.trim() === '' && fullLine.trim() !== '') {
+          const nextValue = source.slice(0, lineStart) + source.slice(lineEnd)
+          commitSourceValue(nextValue)
+          requestAnimationFrame(() => {
+            const nextTextarea = sourceTextareaRef.current
+            if (!nextTextarea) return
+            nextTextarea.setSelectionRange(lineStart, lineStart)
+            resizeTextarea(nextTextarea)
+          })
+          return
+        }
+
+        const insertion = `\n${continuation}`
+        const nextValue = source.slice(0, cursor) + insertion + source.slice(cursor)
         commitSourceValue(nextValue)
-        requestAnimationFrame(() => sourceTextareaRef.current?.setSelectionRange(lineStart, lineStart))
+        const nextCursor = cursor + insertion.length
+        requestAnimationFrame(() => {
+          const nextTextarea = sourceTextareaRef.current
+          if (!nextTextarea) return
+          nextTextarea.setSelectionRange(nextCursor, nextCursor)
+          resizeTextarea(nextTextarea)
+        })
         return
       }
 
-      const insertion = `\n${continuation}`
-      const nextValue = source.slice(0, cursor) + insertion + source.slice(cursor)
-      commitSourceValue(nextValue)
-      const nextCursor = cursor + insertion.length
-      requestAnimationFrame(() => {
-        const nextTextarea = sourceTextareaRef.current
-        if (!nextTextarea) return
-        nextTextarea.setSelectionRange(nextCursor, nextCursor)
-        resizeTextarea(nextTextarea)
-      })
-    }, [commitSourceValue, mergeWithPreviousBlock, moveToAdjacentBlock, showSlashMenu, wrapSelection])
+      if (activeBlockKind === 'paragraph' || activeBlockKind === 'heading') {
+        event.preventDefault()
+        createNextParagraph(textarea)
+      }
+    }
 
     const handleSlashSelect = useCallback((command: { insert: string }) => {
       const textarea = sourceTextareaRef.current
@@ -558,7 +605,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                         }}
                         className="markflow-source-editor"
                         rows={Math.max(1, activeSource.split('\n').length)}
-                        spellCheck={activeBlock?.kind !== 'code' && activeBlock?.kind !== 'math' && activeBlock?.kind !== 'table'}
+                        spellCheck={activeBlockKind !== 'code' && activeBlockKind !== 'math' && activeBlockKind !== 'table'}
                         aria-label="Markdown source"
                       />
 
