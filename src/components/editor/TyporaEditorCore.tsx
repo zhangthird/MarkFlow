@@ -37,9 +37,31 @@ interface PendingInsert {
   after: string
 }
 
+const LIVE_PREVIEW_KINDS = new Set<MarkdownBlock['kind']>(['code', 'math', 'table'])
+
 function resizeTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = '0px'
   textarea.style.height = `${Math.max(28, textarea.scrollHeight)}px`
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function estimateSourceCursor(block: MarkdownBlock, event: React.MouseEvent<HTMLDivElement>): number {
+  const rect = event.currentTarget.getBoundingClientRect()
+  const lines = block.content.split('\n')
+  if (lines.length === 0 || rect.width <= 0 || rect.height <= 0) return block.content.length
+
+  const yRatio = clamp((event.clientY - rect.top) / rect.height, 0, 0.999)
+  const xRatio = clamp((event.clientX - rect.left) / rect.width, 0, 1)
+  const lineIndex = Math.min(lines.length - 1, Math.floor(yRatio * lines.length))
+  const line = lines[lineIndex]
+  const marker = line.match(/^(\s*(?:#{1,6}\s+|(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|>\s*)?)/)?.[0] ?? ''
+  const sourceTextLength = Math.max(0, line.length - marker.length)
+  const linePosition = Math.min(line.length, marker.length + Math.round(sourceTextLength * xRatio))
+  const precedingLength = lines.slice(0, lineIndex).reduce((sum, value) => sum + value.length + 1, 0)
+  return precedingLength + linePosition
 }
 
 function caretViewportPosition(textarea: HTMLTextAreaElement, position: number) {
@@ -90,6 +112,19 @@ function replaceLineRange(content: string, range: EditingRange, nextValue: strin
   }
 }
 
+function updateTaskMarker(blockContent: string, taskIndex: number, checked: boolean): string {
+  let currentTaskIndex = -1
+  return blockContent.replace(
+    /^(\s*(?:[-+*]|\d+[.)])\s+\[)( |x|X)(\])/gm,
+    (match, prefix: string, _state: string, suffix: string) => {
+      currentTaskIndex += 1
+      return currentTaskIndex === taskIndex
+        ? `${prefix}${checked ? 'x' : ' '}${suffix}`
+        : match
+    }
+  )
+}
+
 export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
   function TyporaEditor({ content, onChange }, ref) {
     const sourceTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -117,6 +152,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     const activeSource = editingRange
       ? content.split('\n').slice(editingRange.startLine, editingRange.endLine + 1).join('\n')
       : ''
+    const showActivePreview = Boolean(activeBlock && LIVE_PREVIEW_KINDS.has(activeBlock.kind) && activeSource.trim())
 
     const commitSourceValue = useCallback((nextValue: string) => {
       const range = editingRange
@@ -262,6 +298,17 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       if (imageNode?.fileType === 'image' && imageNode.blobUrl) return imageNode.blobUrl
       return src
     }, [currentFile, files])
+
+    const handleTaskToggle = useCallback((block: MarkdownBlock, taskIndex: number, checked: boolean) => {
+      const nextBlockContent = updateTaskMarker(block.content, taskIndex, checked)
+      if (nextBlockContent === block.content) return
+      const result = replaceLineRange(
+        content,
+        { startLine: block.startLine, endLine: block.endLine },
+        nextBlockContent
+      )
+      onChange(result.content)
+    }, [content, onChange])
 
     const showSlashMenuAtCaret = useCallback((textarea: HTMLTextAreaElement, slashPositionInSource: number) => {
       slashStartPos.current = slashPositionInSource + 1
@@ -492,27 +539,45 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                   key={`${block.startLine}-${block.kind}`}
                   className={`markflow-block ${blockIsEditing ? 'markflow-block-active' : ''}`}
                   data-kind={block.kind}
-                  onClick={() => {
-                    if (!blockIsEditing) activateBlock(block, block.content.length)
+                  onClick={event => {
+                    if (!blockIsEditing) activateBlock(block, estimateSourceCursor(block, event))
                   }}
                 >
                   {blockIsEditing ? (
-                    <textarea
-                      ref={sourceTextareaRef}
-                      value={activeSource}
-                      onChange={handleSourceChange}
-                      onKeyDown={handleSourceKeyDown}
-                      onInput={event => resizeTextarea(event.currentTarget)}
-                      onBlur={() => {
-                        setShowSlashMenu(false)
-                        slashStartPos.current = null
-                        setEditingRange(null)
-                      }}
-                      className="markflow-source-editor"
-                      rows={Math.max(1, activeSource.split('\n').length)}
-                      spellCheck={activeBlock?.kind !== 'code' && activeBlock?.kind !== 'math' && activeBlock?.kind !== 'table'}
-                      aria-label="Markdown source"
-                    />
+                    <div className="markflow-active-editor-stack">
+                      <textarea
+                        ref={sourceTextareaRef}
+                        value={activeSource}
+                        onChange={handleSourceChange}
+                        onKeyDown={handleSourceKeyDown}
+                        onInput={event => resizeTextarea(event.currentTarget)}
+                        onBlur={() => {
+                          setShowSlashMenu(false)
+                          slashStartPos.current = null
+                          setEditingRange(null)
+                        }}
+                        className="markflow-source-editor"
+                        rows={Math.max(1, activeSource.split('\n').length)}
+                        spellCheck={activeBlock?.kind !== 'code' && activeBlock?.kind !== 'math' && activeBlock?.kind !== 'table'}
+                        aria-label="Markdown source"
+                      />
+
+                      {showActivePreview && (
+                        <div
+                          className="markflow-live-preview"
+                          onMouseDown={event => event.preventDefault()}
+                          aria-label="Live preview"
+                        >
+                          <div className="markflow-live-preview-label">Preview</div>
+                          <MarkdownRenderer
+                            content={activeSource}
+                            isDark={isDark}
+                            onWikiLinkClick={handleWikiLinkClick}
+                            resolveImageSrc={resolveImageSrc}
+                          />
+                        </div>
+                      )}
+                    </div>
                   ) : block.kind === 'blank' ? (
                     <div className="markflow-empty-block">{'\u00A0'}</div>
                   ) : (
@@ -520,6 +585,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                       content={block.content}
                       isDark={isDark}
                       onWikiLinkClick={handleWikiLinkClick}
+                      onTaskToggle={(taskIndex, checked) => handleTaskToggle(block, taskIndex, checked)}
                       resolveImageSrc={resolveImageSrc}
                     />
                   )}
