@@ -95,9 +95,24 @@ MarkFlow 使用 File System Access API 直接工作在本地目录：
 - 保存到实际磁盘
 - 图片 / PDF / Excalidraw 与 Markdown 共用一个工作区
 - 刷新后尝试恢复最近目录和文件
+- 可以通过 Quick Open 显式从磁盘重新扫描工作区
 - 权限失效时要求通过用户操作重新授权，而不是后台强制 requestPermission
 
 目录扫描默认跳过 `.git`、`node_modules`、`.next`。
+
+### Workspace Refresh
+
+Quick Open 中的“从磁盘刷新工作区”用于接收 VS Code、Explorer 等外部工具产生的文件变化。
+
+当前采用保守的安全策略：
+
+- 刷新前递归检查整个工作区的 dirty 文件。
+- 只要存在未保存编辑，就取消刷新并提示 dirty 文件数量，避免磁盘版本覆盖 MarkFlow 内存中的修改。
+- 工作区完全 clean 时才重新扫描磁盘。
+- 刷新后尽量恢复原 current file path；目标已不存在时选择第一个可用文件。
+- 接受新的磁盘快照后清空旧 undo history 和 stale search results。
+
+MarkFlow 当前还没有三方 merge/conflict state，因此 Refresh 不会猜测如何合并“磁盘版本”和“未保存版本”。
 
 ### 文件类型
 
@@ -162,7 +177,7 @@ edit
 - 最近访问文件优先
 - 打开 Markdown、图片、PDF、Excalidraw 等
 - 显示当前文件和 dirty 状态
-- 执行保存、全文搜索、专注模式、侧边栏切换等高频命令
+- 执行保存、全文搜索、从磁盘刷新工作区、专注模式、侧边栏切换等高频命令
 
 ### 全文搜索
 
@@ -234,6 +249,7 @@ src/
 │   ├── file-operations.ts
 │   ├── workspace-loader.ts
 │   ├── workspace-persistence.ts
+│   ├── workspace-refresh.ts
 │   └── wiki-links.ts
 └── store/
     └── editor-store.ts
@@ -303,9 +319,9 @@ install → lint → core tests → production build
 已经完成的能力不会继续留在 roadmap。当前真正值得继续推进的是：
 
 1. 从“滚动比例”升级为 source-position-aware 的 WYSIWYG / Source Mode 精确位置映射。
-2. Workspace Refresh：安全处理 VS Code / Explorer 等外部修改，不能覆盖 MarkFlow 内的 dirty 内容。
-3. 将 typed CRUD result 从 UI adapter 下沉到真正的 store/filesystem action boundary。
-4. 扩展自动测试到 table source mapping、键盘 transition、autosave race 和 browser integration。
+2. 将 typed CRUD result 从 UI adapter 下沉到真正的 store/filesystem action boundary。
+3. 扩展自动测试到 table source mapping、键盘 transition、autosave race 和 browser integration。
+4. 为 Workspace Refresh 增加更完整的外部变更 diff/conflict UX，而不是在 dirty 状态下自动猜测合并。
 5. 评估 inline Markdown marker 按焦点显隐，而不破坏 Markdown 作为唯一持久数据源。
 6. 建立 WorkspaceAdapter 后再推进 Tauri desktop shell。
 7. 单独整理 lockfile 与 React 19 / Excalidraw peer-range 依赖兼容债务。
