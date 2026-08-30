@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./editor.css";
 import { Toaster } from "@/components/ui/sonner";
 import { PersistenceRuntime } from "@/components/editor/PersistenceRuntime";
 import { QuickOpen } from "@/components/editor/QuickOpen";
@@ -29,9 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className="antialiased bg-background text-foreground"
-      >
+      <body className="antialiased bg-background text-foreground">
         {children}
         <PersistenceRuntime />
         <WikiLinkRenameRuntime />
