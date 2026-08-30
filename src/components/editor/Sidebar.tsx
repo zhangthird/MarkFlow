@@ -1,21 +1,27 @@
 'use client'
 
-import React, { useRef, useState } from 'react'
-import { useEditorStore, FileNode } from '@/store/editor-store'
-import { 
-  ChevronDown, 
-  ChevronRight, 
-  FileText, 
-  Folder, 
+import React, { useState } from 'react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Edit2,
+  File,
+  FileText,
+  Folder,
   FolderOpen,
   Image as ImageIcon,
-  File,
+  Pencil,
   Plus,
   Trash2,
-  Edit2,
-  X,
-  Pencil
 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useEditorStore, FileNode } from '@/store/editor-store'
+import {
+  createWorkspaceEntry,
+  deleteWorkspaceEntry,
+  FileOperationResult,
+  renameWorkspaceEntry,
+} from '@/lib/file-operations'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -27,9 +33,9 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -45,20 +51,51 @@ interface FileTreeItemProps {
   t: (key: string) => string
 }
 
+function operationErrorMessage(result: FileOperationResult, language: 'zh' | 'en'): string {
+  const zh = language === 'zh'
+  switch (result.code) {
+    case 'invalid_name':
+      return zh ? '文件名无效，请避免空名称、`.`、`..` 或路径分隔符。' : 'Invalid name. Avoid empty names, `.`, `..`, or path separators.'
+    case 'already_exists':
+      return zh ? '同一目录中已经存在同名文件或文件夹。' : 'An entry with the same name already exists in this folder.'
+    case 'parent_not_found':
+      return zh ? '目标文件夹已经不存在，请刷新工作区后重试。' : 'The target folder no longer exists. Refresh the workspace and try again.'
+    case 'not_found':
+      return zh ? '目标已经不存在，请刷新工作区。' : 'The target no longer exists. Refresh the workspace.'
+    case 'io_error':
+      return zh ? '文件系统操作没有完成。请检查目录权限或磁盘状态后重试。' : 'The file-system operation did not complete. Check directory permission or disk state and try again.'
+    default:
+      return zh ? '文件操作失败。' : 'File operation failed.'
+  }
+}
+
+function showFailure(result: FileOperationResult, language: 'zh' | 'en') {
+  toast.error(operationErrorMessage(result, language))
+}
+
+async function createEntryWithFeedback(
+  parentPath: string,
+  name: string,
+  type: 'file' | 'folder',
+  language: 'zh' | 'en'
+): Promise<boolean> {
+  const result = await createWorkspaceEntry(parentPath, name, type)
+  if (!result.ok) {
+    showFailure(result, language)
+    return false
+  }
+  toast.success(language === 'zh' ? `已创建 ${name}` : `Created ${name}`)
+  return true
+}
+
 function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
   const [isOpen, setIsOpen] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState(node.name)
-  
-  const { 
-    currentFile, 
-    setCurrentFile, 
-    deleteFile, 
-    renameFile,
-    addFile
-  } = useEditorStore()
-  
-  const hasChildren = node.type === 'folder' && node.children && node.children.length > 0
+  const currentFile = useEditorStore(state => state.currentFile)
+  const setCurrentFile = useEditorStore(state => state.setCurrentFile)
+
+  const hasChildren = node.type === 'folder' && Boolean(node.children?.length)
   const isSelected = currentFile?.path === node.path
   const isFolder = node.type === 'folder'
   const isModified = node.isModified
@@ -67,45 +104,63 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
   const isText = node.fileType === 'text' || node.fileType === 'markdown'
 
   const handleClick = () => {
-    if (isFolder) {
-      setIsOpen(!isOpen)
-    } else {
-      setCurrentFile(node)
-    }
+    if (isFolder) setIsOpen(value => !value)
+    else setCurrentFile(node)
   }
 
-  const handleRename = () => {
-    if (newName && newName !== node.name) {
-      renameFile(node.path, newName)
+  const handleRename = async () => {
+    if (!newName || newName === node.name) {
+      setNewName(node.name)
+      setIsRenaming(false)
+      return
+    }
+
+    const result = await renameWorkspaceEntry(node.path, newName)
+    if (!result.ok) {
+      showFailure(result, language)
+      setNewName(node.name)
+      return
+    }
+
+    if (result.code !== 'unchanged') {
+      toast.success(language === 'zh' ? `已重命名为 ${newName}` : `Renamed to ${newName}`)
     }
     setIsRenaming(false)
   }
 
-  const handleDelete = () => {
-    deleteFile(node.path)
-  }
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      language === 'zh'
+        ? `确定删除“${node.name}”${isFolder ? '及其全部内容' : ''}吗？此操作会同步删除磁盘中的内容。`
+        : `Delete “${node.name}”${isFolder ? ' and everything inside it' : ''}? This also deletes it from disk.`
+    )
+    if (!confirmed) return
 
-  const handleAddMarkdownFile = () => {
-    const name = prompt(language === 'zh' ? '输入文件名 (例如: 新文件.md):' : 'Enter file name (e.g., NewFile.md):')
-    if (name) {
-      const fileName = name.endsWith('.md') || name.endsWith('.txt') ? name : `${name}.md`
-      addFile(node.path, fileName, 'file')
+    const result = await deleteWorkspaceEntry(node.path)
+    if (!result.ok) {
+      showFailure(result, language)
+      return
     }
+    toast.success(language === 'zh' ? `已删除 ${node.name}` : `Deleted ${node.name}`)
   }
 
-  const handleAddExcalidrawFile = () => {
-    const name = prompt(language === 'zh' ? '输入文件名 (例如: 新图表.excalidraw):' : 'Enter file name (e.g., NewDiagram.excalidraw):')
-    if (name) {
-      const fileName = name.endsWith('.excalidraw') ? name : `${name}.excalidraw`
-      addFile(node.path, fileName, 'file')
-    }
+  const handleAddMarkdownFile = async () => {
+    const name = prompt(language === 'zh' ? '输入文件名（例如：新文件.md）:' : 'Enter file name (e.g., NewFile.md):')
+    if (!name) return
+    const fileName = name.endsWith('.md') || name.endsWith('.txt') ? name : `${name}.md`
+    await createEntryWithFeedback(node.path, fileName, 'file', language)
   }
 
-  const handleAddFolder = () => {
+  const handleAddExcalidrawFile = async () => {
+    const name = prompt(language === 'zh' ? '输入文件名（例如：新图表.excalidraw）:' : 'Enter file name (e.g., NewDiagram.excalidraw):')
+    if (!name) return
+    const fileName = name.endsWith('.excalidraw') ? name : `${name}.excalidraw`
+    await createEntryWithFeedback(node.path, fileName, 'file', language)
+  }
+
+  const handleAddFolder = async () => {
     const name = prompt(language === 'zh' ? '输入文件夹名称:' : 'Enter folder name:')
-    if (name) {
-      addFile(node.path, name, 'folder')
-    }
+    if (name) await createEntryWithFeedback(node.path, name, 'folder', language)
   }
 
   return (
@@ -114,100 +169,76 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
         <ContextMenuTrigger>
           <div
             onClick={handleClick}
-            className={`
-              group flex items-center gap-1 py-1.5 px-2 
-              hover:bg-accent/50 cursor-pointer rounded-sm
-              transition-colors duration-150
-              ${isSelected ? 'bg-accent text-accent-foreground' : ''}
-            `}
+            className={`group flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1.5 transition-colors duration-150 hover:bg-accent/50 ${isSelected ? 'bg-accent text-accent-foreground' : ''}`}
             style={{ paddingLeft: `${depth * 16 + 8}px` }}
           >
-            {/* Expand/Collapse arrow for folders */}
             {isFolder && (
-              <span className="w-4 h-4 flex items-center justify-center text-muted-foreground">
-                {hasChildren ? (
-                  isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />
-                ) : null}
+              <span className="flex h-4 w-4 items-center justify-center text-muted-foreground">
+                {hasChildren ? (isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />) : null}
               </span>
             )}
-            
-            {/* Icon */}
-            {!isFolder && isExcalidraw && <Pencil className="w-4 h-4 text-purple-500 shrink-0" />}
-            {!isFolder && isImage && <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />}
-            {!isFolder && !isExcalidraw && !isImage && isText && <FileText className="w-4 h-4 text-blue-500 shrink-0" />}
-            {!isFolder && !isExcalidraw && !isImage && !isText && <File className="w-4 h-4 text-muted-foreground shrink-0" />}
-            {isFolder && (isOpen ? (
-              <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
-            ) : (
-              <Folder className="w-4 h-4 text-amber-500 shrink-0" />
-            ))}
-            
-            {/* Name */}
+
+            {!isFolder && isExcalidraw && <Pencil className="h-4 w-4 shrink-0 text-purple-500" />}
+            {!isFolder && isImage && <ImageIcon className="h-4 w-4 shrink-0 text-emerald-500" />}
+            {!isFolder && !isExcalidraw && !isImage && isText && <FileText className="h-4 w-4 shrink-0 text-blue-500" />}
+            {!isFolder && !isExcalidraw && !isImage && !isText && <File className="h-4 w-4 shrink-0 text-muted-foreground" />}
+            {isFolder && (isOpen ? <FolderOpen className="h-4 w-4 shrink-0 text-amber-500" /> : <Folder className="h-4 w-4 shrink-0 text-amber-500" />)}
+
             {isRenaming ? (
               <Input
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onBlur={handleRename}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleRename()
-                  if (e.key === 'Escape') setIsRenaming(false)
+                onChange={event => setNewName(event.target.value)}
+                onBlur={() => void handleRename()}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') void handleRename()
+                  if (event.key === 'Escape') {
+                    setNewName(node.name)
+                    setIsRenaming(false)
+                  }
                 }}
-                className="h-5 text-xs px-1 py-0"
+                className="h-5 px-1 py-0 text-xs"
                 autoFocus
-                onClick={(e) => e.stopPropagation()}
+                onClick={event => event.stopPropagation()}
               />
             ) : (
               <>
-                <span className="truncate text-sm flex-1">{node.name}</span>
-                {isModified && (
-                  <span className="w-2 h-2 bg-orange-500 rounded-full shrink-0" />
-                )}
+                <span className="flex-1 truncate text-sm">{node.name}</span>
+                {isModified && <span className="h-2 w-2 shrink-0 rounded-full bg-orange-500" />}
               </>
             )}
           </div>
         </ContextMenuTrigger>
+
         <ContextMenuContent className="w-48">
           {isFolder && (
             <>
-              <ContextMenuItem onClick={handleAddMarkdownFile}>
-                <FileText className="w-4 h-4 mr-2" />
-                {t('newMarkdownFile')}
+              <ContextMenuItem onClick={() => void handleAddMarkdownFile()}>
+                <FileText className="mr-2 h-4 w-4" />{t('newMarkdownFile')}
               </ContextMenuItem>
-              <ContextMenuItem onClick={handleAddExcalidrawFile}>
-                <Pencil className="w-4 h-4 mr-2" />
-                {t('newExcalidrawFile')}
+              <ContextMenuItem onClick={() => void handleAddExcalidrawFile()}>
+                <Pencil className="mr-2 h-4 w-4" />{t('newExcalidrawFile')}
               </ContextMenuItem>
-              <ContextMenuItem onClick={handleAddFolder}>
-                <Folder className="w-4 h-4 mr-2" />
-                {t('newFolder')}
+              <ContextMenuItem onClick={() => void handleAddFolder()}>
+                <Folder className="mr-2 h-4 w-4" />{t('newFolder')}
               </ContextMenuItem>
             </>
           )}
-          <ContextMenuItem onClick={() => setIsRenaming(true)}>
-            <Edit2 className="w-4 h-4 mr-2" />
-            {t('rename')}
+          <ContextMenuItem onClick={() => {
+            setNewName(node.name)
+            setIsRenaming(true)
+          }}>
+            <Edit2 className="mr-2 h-4 w-4" />{t('rename')}
           </ContextMenuItem>
-          <ContextMenuItem 
-            onClick={handleDelete}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            {t('delete')}
+          <ContextMenuItem onClick={() => void handleDelete()} className="text-destructive focus:text-destructive">
+            <Trash2 className="mr-2 h-4 w-4" />{t('delete')}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
 
-      {/* Children */}
       {isFolder && isOpen && hasChildren && (
         <div>
-          {node.children!.map((child) => (
-            <FileTreeItem
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              language={language}
-              t={t}
-            />
+          {node.children!.map(child => (
+            <FileTreeItem key={child.id} node={child} depth={depth + 1} language={language} t={t} />
           ))}
         </div>
       )}
@@ -216,16 +247,13 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
 }
 
 export function Sidebar() {
-  const { 
-    files, 
-    sidebarOpen, 
-    sidebarWidth,
-    rootFolderName,
-    addFile,
-    t,
-    language
-  } = useEditorStore()
-  
+  const files = useEditorStore(state => state.files)
+  const sidebarOpen = useEditorStore(state => state.sidebarOpen)
+  const sidebarWidth = useEditorStore(state => state.sidebarWidth)
+  const rootFolderName = useEditorStore(state => state.rootFolderName)
+  const t = useEditorStore(state => state.t)
+  const language = useEditorStore(state => state.language)
+
   const [showNewFileDialog, setShowNewFileDialog] = useState(false)
   const [newFileDialogType, setNewFileDialogType] = useState<'markdown' | 'excalidraw'>('markdown')
   const [newFileName, setNewFileName] = useState('')
@@ -242,127 +270,86 @@ export function Sidebar() {
     setShowNewFileDialog(true)
   }
 
-  const handleNewFile = () => {
-    if (newFileName) {
-      if (newFileDialogType === 'excalidraw') {
-        const fileName = newFileName.endsWith('.excalidraw') ? newFileName : `${newFileName}.excalidraw`
-        addFile('/', fileName, 'file')
-      } else {
-        const fileName = newFileName.endsWith('.md') || newFileName.endsWith('.txt') ? newFileName : `${newFileName}.md`
-        addFile('/', fileName, 'file')
-      }
-      setNewFileName('')
-      setShowNewFileDialog(false)
-    }
+  const handleNewFile = async () => {
+    if (!newFileName) return
+    const fileName = newFileDialogType === 'excalidraw'
+      ? (newFileName.endsWith('.excalidraw') ? newFileName : `${newFileName}.excalidraw`)
+      : (newFileName.endsWith('.md') || newFileName.endsWith('.txt') ? newFileName : `${newFileName}.md`)
+
+    const created = await createEntryWithFeedback('/', fileName, 'file', language)
+    if (!created) return
+    setNewFileName('')
+    setShowNewFileDialog(false)
   }
 
-  const handleNewFolder = () => {
+  const handleNewFolder = async () => {
     const name = prompt(language === 'zh' ? '输入文件夹名称:' : 'Enter folder name:')
-    if (name) {
-      addFile('/', name, 'folder')
-    }
+    if (name) await createEntryWithFeedback('/', name, 'folder', language)
   }
-
-  const openFolderLabel = language === 'zh' ? '打开' : 'Open'
 
   if (!sidebarOpen) return null
 
   return (
     <>
-      <div 
-        className="h-full bg-sidebar border-r border-sidebar-border flex flex-col"
-        style={{ width: sidebarWidth }}
-      >
-        {/* Header */}
-        <div className="p-3 border-b border-sidebar-border">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-sm text-sidebar-foreground truncate">
-              {rootFolderName}
-            </h2>
+      <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar" style={{ width: sidebarWidth }}>
+        <div className="border-b border-sidebar-border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="truncate text-sm font-semibold text-sidebar-foreground">{rootFolderName}</h2>
           </div>
-          
-          {/* Action buttons */}
-          <div className="flex gap-1 flex-wrap">
+
+          <div className="flex flex-wrap gap-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  {language === 'zh' ? '新建' : 'New'}
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                  <Plus className="mr-1 h-3 w-3" />{language === 'zh' ? '新建' : 'New'}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={handleNewMarkdown}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Markdown
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleNewExcalidraw}>
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Excalidraw
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleNewFolder}>
-                  <Folder className="w-4 h-4 mr-2" />
-                  {language === 'zh' ? '文件夹' : 'Folder'}
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleNewMarkdown}><FileText className="mr-2 h-4 w-4" />Markdown</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleNewExcalidraw}><Pencil className="mr-2 h-4 w-4" />Excalidraw</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleNewFolder()}><Folder className="mr-2 h-4 w-4" />{language === 'zh' ? '文件夹' : 'Folder'}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
 
-        {/* File tree */}
         <div className="sidebar-scrollbar flex-1 overflow-y-auto py-2">
           {files.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm px-4">
+            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
               <p>{t('noFiles')}</p>
               <p className="mt-1 text-xs">{t('createFileToStart')}</p>
             </div>
-          ) : (
-            files.map((node) => (
-              <FileTreeItem
-                key={node.id}
-                node={node}
-                depth={0}
-                language={language}
-                t={t}
-              />
-            ))
-          )}
+          ) : files.map(node => (
+            <FileTreeItem key={node.id} node={node} depth={0} language={language} t={t} />
+          ))}
         </div>
       </div>
 
-      {/* New File Dialog */}
       <Dialog open={showNewFileDialog} onOpenChange={setShowNewFileDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {newFileDialogType === 'excalidraw' 
+              {newFileDialogType === 'excalidraw'
                 ? (language === 'zh' ? '新建 Excalidraw 文件' : 'Create New Excalidraw')
                 : (language === 'zh' ? '新建 Markdown 文件' : 'Create New Markdown')}
             </DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <Input
-              placeholder={newFileDialogType === 'excalidraw' 
-                ? (language === 'zh' ? '输入文件名 (例如: 新图表.excalidraw)' : 'Enter file name (e.g., Diagram.excalidraw)')
-                : (language === 'zh' ? '输入文件名 (例如: 新文档.md)' : 'Enter file name (e.g., Document.md)')}
+              placeholder={newFileDialogType === 'excalidraw'
+                ? (language === 'zh' ? '输入文件名（例如：新图表.excalidraw）' : 'Enter file name (e.g., Diagram.excalidraw)')
+                : (language === 'zh' ? '输入文件名（例如：新文档.md）' : 'Enter file name (e.g., Document.md)')}
               value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleNewFile()
+              onChange={event => setNewFileName(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleNewFile()
               }}
               autoFocus
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewFileDialog(false)}>
-              {language === 'zh' ? '取消' : 'Cancel'}
-            </Button>
-            <Button onClick={handleNewFile}>
-              {language === 'zh' ? '创建' : 'Create'}
-            </Button>
+            <Button variant="outline" onClick={() => setShowNewFileDialog(false)}>{language === 'zh' ? '取消' : 'Cancel'}</Button>
+            <Button onClick={() => void handleNewFile()}>{language === 'zh' ? '创建' : 'Create'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
