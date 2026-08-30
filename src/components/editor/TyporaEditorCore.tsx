@@ -93,13 +93,10 @@ function replaceLineRange(content: string, range: EditingRange, nextValue: strin
 export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
   function TyporaEditor({ content, onChange }, ref) {
     const sourceTextareaRef = useRef<HTMLTextAreaElement>(null)
-    const contentRef = useRef(content)
     const lastActiveStartRef = useRef<number | null>(null)
     const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null)
     const pendingInsertRef = useRef<PendingInsert | null>(null)
     const slashStartPos = useRef<number | null>(null)
-
-    contentRef.current = content
 
     const [editingRange, setEditingRange] = useState<EditingRange | null>(null)
     const [isDark, setIsDark] = useState(false)
@@ -124,13 +121,12 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     const commitSourceValue = useCallback((nextValue: string) => {
       const range = editingRange
       if (!range) return
-      const result = replaceLineRange(contentRef.current, range, nextValue)
-      contentRef.current = result.content
+      const result = replaceLineRange(content, range, nextValue)
       if (result.endLine !== range.endLine) {
         setEditingRange({ startLine: range.startLine, endLine: result.endLine })
       }
       onChange(result.content)
-    }, [editingRange, onChange])
+    }, [content, editingRange, onChange])
 
     const activateBlock = useCallback((block: MarkdownBlock, cursor?: number) => {
       lastActiveStartRef.current = block.startLine
@@ -188,7 +184,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         nextTextarea.setSelectionRange(cursor, cursor)
         resizeTextarea(nextTextarea)
       })
-    }, [editingRange?.startLine, commitSourceValue, editingRange])
+    }, [commitSourceValue, editingRange])
 
     const chooseFallbackBlock = useCallback(() => {
       if (contentBlocks.length === 0) return null
@@ -312,15 +308,14 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       const previous = currentIndex > 0 ? contentBlocks[currentIndex - 1] : null
       if (!previous) return false
 
-      const currentValue = contentRef.current.split('\n').slice(editingRange.startLine, editingRange.endLine + 1).join('\n')
+      const currentValue = content.split('\n').slice(editingRange.startLine, editingRange.endLine + 1).join('\n')
       const combined = previous.content + currentValue
-      const lines = contentRef.current.split('\n')
+      const lines = content.split('\n')
       const nextLines = combined.split('\n')
       lines.splice(previous.startLine, editingRange.endLine - previous.startLine + 1, ...nextLines)
       const nextContent = lines.join('\n')
       const cursor = previous.content.length
 
-      contentRef.current = nextContent
       lastActiveStartRef.current = previous.startLine
       pendingSelectionRef.current = { start: cursor, end: cursor }
       setEditingRange({
@@ -329,7 +324,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       })
       onChange(nextContent)
       return true
-    }, [contentBlocks, editingRange, onChange])
+    }, [content, contentBlocks, editingRange, onChange])
 
     const handleSourceKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = event.currentTarget
