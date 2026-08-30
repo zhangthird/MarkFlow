@@ -53,6 +53,59 @@
   padding-left: 0.35rem;
 }
 
+.markflow-code-toolbar,
+.markflow-mermaid-toolbar {
+  position: absolute;
+  top: 0.48rem;
+  right: 0.55rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.markflow-code-toolbar .markflow-code-language,
+.markflow-mermaid-toolbar .markflow-code-language {
+  position: static;
+  color: var(--muted-foreground);
+  line-height: 1.6rem;
+}
+
+.markflow-code-copy {
+  display: inline-flex;
+  width: 1.65rem;
+  height: 1.65rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.35rem;
+  background: color-mix(in oklab, var(--background) 76%, transparent);
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease, opacity 100ms ease;
+}
+
+.markflow-code-block:hover .markflow-code-copy,
+.markflow-mermaid:hover .markflow-code-copy,
+.markflow-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.markflow-code-copy:hover {
+  background: color-mix(in oklab, var(--muted) 78%, var(--background));
+  color: var(--foreground);
+}
+
+.markflow-code-copy:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.markflow-mermaid {
+  position: relative;
+}
+
 .markflow-source-mode {
   background: var(--background);
 }
@@ -106,7 +159,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .markflow-block,
-  .markflow-wiki-link {
+  .markflow-wiki-link,
+  .markflow-code-copy {
     transition: none;
   }
 }
