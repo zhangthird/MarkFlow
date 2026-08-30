@@ -175,6 +175,12 @@ const emptyHistory = (filePath: string | null = null): HistoryState => ({
   maxHistory: 50,
 })
 
+const emptySearchResults = (search: SearchState): SearchState => ({
+  ...search,
+  results: [],
+  currentIndex: 0,
+})
+
 function updateNodeByPath(
   nodes: FileNode[],
   path: string,
@@ -222,18 +228,50 @@ function renameNodeTree(node: FileNode, oldPath: string, newPath: string, newNam
   }
 }
 
-async function rebindFileHandles(
+function revokeBlobUrls(node: FileNode): void {
+  if (node.blobUrl) URL.revokeObjectURL(node.blobUrl)
+  node.children?.forEach(revokeBlobUrls)
+}
+
+async function rebindFileHandlesBestEffort(
   rootHandle: FileSystemDirectoryHandle,
   node: FileNode
 ): Promise<FileNode> {
   if (node.type === 'file') {
-    const parent = await getDirectoryHandleAtPath(rootHandle, parentPathOf(node.path))
-    const handle = await parent.getFileHandle(node.name)
-    return { ...node, handle }
+    try {
+      const parent = await getDirectoryHandleAtPath(rootHandle, parentPathOf(node.path))
+      const handle = await parent.getFileHandle(node.name)
+      const fileType = detectFileType(node.name)
+      const diskFile = await handle.getFile()
+      const readableText = fileType === 'markdown' || fileType === 'text' || fileType === 'excalidraw'
+      const diskText = readableText && !node.isModified ? await diskFile.text() : undefined
+      const nextBlobUrl = fileType === 'image' || fileType === 'pdf'
+        ? URL.createObjectURL(diskFile)
+        : undefined
+
+      if (node.blobUrl && node.blobUrl !== nextBlobUrl) URL.revokeObjectURL(node.blobUrl)
+
+      return {
+        ...node,
+        fileType,
+        handle,
+        content: fileType === 'markdown' || fileType === 'text'
+          ? (node.isModified ? node.content : diskText)
+          : undefined,
+        excalidrawData: fileType === 'excalidraw'
+          ? (node.isModified ? node.excalidrawData : diskText)
+          : undefined,
+        blobUrl: nextBlobUrl,
+        mimeType: diskFile.type,
+      }
+    } catch (error) {
+      console.warn(`Could not rebind file handle for ${node.path}:`, error)
+      return { ...node, handle: undefined }
+    }
   }
 
   const children = node.children
-    ? await Promise.all(node.children.map(child => rebindFileHandles(rootHandle, child)))
+    ? await Promise.all(node.children.map(child => rebindFileHandlesBestEffort(rootHandle, child)))
     : []
   return { ...node, children }
 }
@@ -256,6 +294,15 @@ function initialExcalidrawData(): string {
     },
     files: {},
   })
+}
+
+function dataForFile(file: FileNode, activeContent: string): string {
+  return file.fileType === 'excalidraw' ? file.excalidrawData || '{}' : activeContent
+}
+
+function latestDataForPath(state: EditorState, path: string, file: FileNode): string {
+  const content = state.currentFile?.path === path ? state.content : file.content ?? ''
+  return dataForFile(file, content)
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -300,22 +347,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   toggleSidebar: () => set(state => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
-  setFiles: (files) => set({ files }),
+
+  setFiles: (files) => {
+    get().files.forEach(revokeBlobUrls)
+    set({ files })
+  },
+
   setRootFolderName: (name) => set({ rootFolderName: name }),
   setRootHandle: (handle) => set({ rootHandle: handle }),
 
   setCurrentFile: (file) => {
-    const previousPath = get().currentFile?.path ?? null
+    const state = get()
+    const previousPath = state.currentFile?.path ?? null
     const nextPath = file?.path ?? null
     set({
       currentFile: file,
       content: file?.content || '',
-      history: previousPath === nextPath ? get().history : emptyHistory(nextPath),
+      history: previousPath === nextPath ? state.history : emptyHistory(nextPath),
     })
   },
 
   setContent: (content) => {
     const state = get()
+    if (state.content === content) return
+
     const filePath = state.currentFile?.path ?? null
     const history = state.history.filePath === filePath ? state.history : emptyHistory(filePath)
     set({
@@ -330,7 +385,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   updateCurrentFileContent: (content) => {
     const state = get()
-    if (!state.currentFile) return
+    if (!state.currentFile || state.content === content) return
 
     const filePath = state.currentFile.path
     const history = state.history.filePath === filePath ? state.history : emptyHistory(filePath)
@@ -350,7 +405,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   updateExcalidrawData: (data) => {
     const state = get()
-    if (!state.currentFile) return
+    if (!state.currentFile || state.currentFile.excalidrawData === data) return
+
     const filePath = state.currentFile.path
     set({
       currentFile: { ...state.currentFile, excalidrawData: data, isModified: true },
@@ -374,8 +430,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
 
-    const performAdd = async () => {
+    void (async () => {
       const state = get()
+      const parent = parentPath === '/' ? null : findNodeByPath(state.files, parentPath)
+      if (parentPath !== '/' && (!parent || parent.type !== 'folder')) {
+        console.error(`Parent folder does not exist: ${parentPath}`)
+        return
+      }
+
       const fileType = type === 'file' ? detectFileType(name) : undefined
       const path = parentPath === '/' ? `/${name}` : `${parentPath}/${name}`
       if (findNodeByPath(state.files, path)) {
@@ -430,17 +492,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           currentFile: newNode,
           content: newNode.content || '',
           history: emptyHistory(newNode.path),
+          search: emptySearchResults(latest.search),
         })
       } else {
-        set({ files })
+        set({ files, search: emptySearchResults(latest.search) })
       }
-    }
-
-    void performAdd()
+    })()
   },
 
   deleteFile: (path) => {
-    const performDelete = async () => {
+    void (async () => {
       const state = get()
       const target = findNodeByPath(state.files, path)
       if (!target) return
@@ -454,6 +515,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         return
       }
 
+      revokeBlobUrls(target)
+
       const latest = get()
       const removesCurrent = latest.currentFile
         ? latest.currentFile.path === path || latest.currentFile.path.startsWith(`${path}/`)
@@ -464,10 +527,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         currentFile: removesCurrent ? null : latest.currentFile,
         content: removesCurrent ? '' : latest.content,
         history: removesCurrent ? emptyHistory(null) : latest.history,
+        search: emptySearchResults(latest.search),
       })
-    }
-
-    void performDelete()
+    })()
   },
 
   renameFile: (path, rawNewName) => {
@@ -477,7 +539,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
 
-    const performRename = async () => {
+    void (async () => {
       const state = get()
       const target = findNodeByPath(state.files, path)
       if (!target || target.name === newName) return
@@ -494,9 +556,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       try {
         if (state.rootHandle) {
           const newFileHandle = await renameEntryOnDisk(state.rootHandle, path, newName, target.type)
-          renamedRoot = target.type === 'file'
-            ? { ...renamedRoot, handle: newFileHandle ?? undefined }
-            : await rebindFileHandles(state.rootHandle, renamedRoot)
+          if (target.type === 'file') {
+            renamedRoot = { ...renamedRoot, handle: newFileHandle ?? undefined }
+            renamedRoot = await rebindFileHandlesBestEffort(state.rootHandle, renamedRoot)
+          } else {
+            renamedRoot = await rebindFileHandlesBestEffort(state.rootHandle, renamedRoot)
+          }
         }
       } catch (error) {
         console.error('Failed to rename entry on disk:', error)
@@ -521,25 +586,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({
         files,
         currentFile,
-        content: currentFile?.content ?? latest.content,
+        content: currentFile?.content ?? (currentInsideTarget ? '' : latest.content),
         history: currentInsideTarget ? emptyHistory(nextCurrentPath ?? null) : latest.history,
+        search: emptySearchResults(latest.search),
       })
-    }
-
-    void performRename()
+    })()
   },
 
   saveCurrentFile: async () => {
     const state = get()
-    if (!state.currentFile) return false
+    const fileToSave = state.currentFile
+    if (!fileToSave) return false
 
-    const dataToSave = state.currentFile.fileType === 'excalidraw'
-      ? state.currentFile.excalidrawData || '{}'
-      : state.content
+    const pathToSave = fileToSave.path
+    const dataToSave = dataForFile(fileToSave, state.content)
 
-    if (state.currentFile.handle) {
+    if (fileToSave.handle) {
       try {
-        const writable = await state.currentFile.handle.createWritable()
+        const writable = await fileToSave.handle.createWritable()
         await writable.write(dataToSave)
         await writable.close()
       } catch (error) {
@@ -549,14 +613,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     const latest = get()
-    const currentPath = latest.currentFile?.path
-    if (!currentPath) return false
-    const currentFile = { ...latest.currentFile, isModified: false }
+    const latestFile = findNodeByPath(latest.files, pathToSave)
+    if (!latestFile) return false
 
-    set({
-      currentFile,
-      files: updateNodeByPath(latest.files, currentPath, node => ({ ...node, isModified: false })),
-    })
+    // A successful write only proves that this particular snapshot reached
+    // disk. If the document changed while writing, keep it dirty so the newer
+    // snapshot will still be persisted.
+    if (latestDataForPath(latest, pathToSave, latestFile) !== dataToSave) {
+      return true
+    }
+
+    const files = updateNodeByPath(latest.files, pathToSave, node => ({ ...node, isModified: false }))
+    const currentFile = latest.currentFile?.path === pathToSave
+      ? { ...latest.currentFile, isModified: false }
+      : latest.currentFile
+
+    set({ files, currentFile })
     return true
   },
 
@@ -586,7 +658,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const state = get()
     const query = state.search.query.trim().toLowerCase()
     if (!query) {
-      set({ search: { ...state.search, results: [], currentIndex: 0 } })
+      set({ search: emptySearchResults(state.search) })
       return
     }
 
