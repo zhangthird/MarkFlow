@@ -490,7 +490,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       return true
     }, [content, editingRange, onChange])
 
-    const insertHardBreak = useCallback((textarea: HTMLTextAreaElement) => {
+    const insertHardBreak = (textarea: HTMLTextAreaElement) => {
       const start = textarea.selectionStart
       const end = textarea.selectionEnd
       const source = textarea.value
@@ -519,7 +519,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         nextTextarea.setSelectionRange(nextCursor, nextCursor)
         resizeTextarea(nextTextarea)
       })
-    }, [activeBlockKind, commitSourceValue])
+    }
 
     const handleSourceKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = event.currentTarget
