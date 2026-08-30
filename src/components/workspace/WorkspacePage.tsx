@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import dynamic from 'next/dynamic'
-import { PanelLeft, PanelRight } from 'lucide-react'
+import { Code2, PanelLeft, PanelRight } from 'lucide-react'
 import { TyporaEditor, TyporaEditorRef } from '@/components/editor/TyporaEditor'
 import { Sidebar } from '@/components/editor/Sidebar'
 import { Toolbar } from '@/components/editor/Toolbar'
@@ -32,6 +32,7 @@ const getServerHydrationSnapshot = () => false
 export default function WorkspacePage() {
   const editorRef = useRef<TyporaEditorRef>(null)
   const [backlinksOpen, setBacklinksOpen] = useState(false)
+  const [sourceMode, setSourceMode] = useState(false)
   const isHydrated = useSyncExternalStore(
     subscribeHydration,
     getClientHydrationSnapshot,
@@ -51,20 +52,26 @@ export default function WorkspacePage() {
   useAppPreferences()
   const { openFolder } = useWorkspaceDirectory()
 
+  const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === '/' && isTextLikeFile) {
+        event.preventDefault()
+        setSourceMode(value => !value)
+        return
+      }
+
       if (event.key === 'Escape' && focusMode) toggleFocusMode()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusMode, toggleFocusMode])
+  }, [focusMode, isTextLikeFile, toggleFocusMode])
 
   const handleContentChange = useCallback((nextContent: string) => {
     updateCurrentFileContent(nextContent)
   }, [updateCurrentFileContent])
-
-  const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
 
   if (!isHydrated) {
     return (
@@ -129,7 +136,12 @@ export default function WorkspacePage() {
                 </div>
               </div>
             ) : isTextLikeFile ? (
-              <TyporaEditor ref={editorRef} content={content} onChange={handleContentChange} />
+              <TyporaEditor
+                ref={editorRef}
+                content={content}
+                onChange={handleContentChange}
+                sourceMode={sourceMode}
+              />
             ) : (
               <div className="flex flex-1 items-center justify-center p-6">
                 <div className="max-w-md rounded-xl border border-border bg-card p-6 text-center">
@@ -188,14 +200,29 @@ export default function WorkspacePage() {
                     ? 'PDF'
                     : currentFile?.fileType === 'binary'
                       ? (language === 'zh' ? '二进制' : 'Binary')
-                      : t('markdown')}
+                      : sourceMode && isTextLikeFile
+                        ? (language === 'zh' ? 'Markdown 源码' : 'Markdown Source')
+                        : t('markdown')}
             </span>
             <span>{t('utf8')}</span>
             {currentFile?.isModified && <span className="text-orange-500">{t('unsaved')}</span>}
           </div>
 
           {isTextLikeFile && (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant={sourceMode ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-5 gap-1 px-1.5 text-[11px] font-normal"
+                onClick={() => setSourceMode(value => !value)}
+                title={language === 'zh' ? '切换源码模式 (Ctrl+/)' : 'Toggle source mode (Ctrl+/)'}
+              >
+                <Code2 className="h-3 w-3" />
+                {sourceMode
+                  ? (language === 'zh' ? '所见即所得' : 'WYSIWYG')
+                  : (language === 'zh' ? '源码' : 'Source')}
+              </Button>
               <span>{content.split(/\s+/).filter(Boolean).length} {t('words')}</span>
               <span>{content.length} {t('characters')}</span>
               <span>{content.split('\n').length} {t('lines')}</span>
