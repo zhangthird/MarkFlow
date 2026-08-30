@@ -1,10 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { Check, Copy } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { MermaidRenderer } from '../MermaidRenderer'
@@ -56,6 +57,59 @@ function wikiLinkPlugin() {
   }
 }
 
+async function writeClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('Copy failed')
+}
+
+function CopyCodeButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const resetTimerRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current)
+  }, [])
+
+  const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    try {
+      await writeClipboard(text)
+      setCopied(true)
+      if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current)
+      resetTimerRef.current = window.setTimeout(() => setCopied(false), 1400)
+    } catch (error) {
+      console.error('Failed to copy code:', error)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="markflow-code-copy"
+      onMouseDown={event => event.preventDefault()}
+      onClick={handleCopy}
+      title={copied ? 'Copied' : 'Copy code'}
+      aria-label={copied ? 'Code copied' : 'Copy code'}
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
+
 interface MarkdownRendererProps {
   content: string
   isDark: boolean
@@ -86,6 +140,10 @@ export function MarkdownRenderer({
           if (language === 'mermaid') {
             return (
               <div className="markflow-mermaid">
+                <div className="markflow-mermaid-toolbar">
+                  <span className="markflow-code-language">mermaid</span>
+                  <CopyCodeButton text={codeString} />
+                </div>
                 <MermaidRenderer code={codeString} isDark={isDark} />
               </div>
             )
@@ -97,14 +155,17 @@ export function MarkdownRenderer({
 
           return (
             <div className="markflow-code-block">
-              {language && <div className="markflow-code-language">{language}</div>}
+              <div className="markflow-code-toolbar">
+                {language && <span className="markflow-code-language">{language}</span>}
+                <CopyCodeButton text={codeString} />
+              </div>
               <SyntaxHighlighter
                 style={isDark ? oneDark : oneLight}
                 language={language || 'text'}
                 PreTag="div"
                 customStyle={{
                   margin: 0,
-                  padding: language ? '2rem 1rem 1rem' : '1rem',
+                  padding: '2rem 1rem 1rem',
                   fontSize: '0.875rem',
                   lineHeight: 1.65,
                   border: 'none',
