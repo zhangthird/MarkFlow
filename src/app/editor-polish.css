@@ -53,6 +53,57 @@
   padding-left: 0.35rem;
 }
 
+.markflow-source-mode {
+  background: var(--background);
+}
+
+.markflow-source-mode-shell {
+  width: min(100%, 980px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 3.5rem 4.5rem 10rem;
+}
+
+.markflow-source-mode-editor {
+  display: block;
+  width: 100%;
+  min-height: calc(100vh - 10rem);
+  resize: none;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  caret-color: var(--foreground);
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.72;
+  letter-spacing: 0;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.markflow-source-mode-editor::selection {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+@media (max-width: 900px) {
+  .markflow-source-mode-shell {
+    padding: 2.5rem 2.2rem 8rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .markflow-source-mode-shell {
+    padding: 1.8rem 1.15rem 6rem;
+  }
+
+  .markflow-source-mode-editor {
+    font-size: 0.86rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .markflow-block,
   .markflow-wiki-link {
