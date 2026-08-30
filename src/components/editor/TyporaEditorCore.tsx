@@ -408,7 +408,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       return true
     }, [content, editingRange, onChange])
 
-    const handleSourceKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleSourceKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = event.currentTarget
 
       if (showSlashMenu && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)) return
@@ -543,15 +543,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         event.preventDefault()
         createNextParagraph(textarea)
       }
-    }, [
-      activeBlockKind,
-      commitSourceValue,
-      createNextParagraph,
-      mergeWithPreviousBlock,
-      moveToAdjacentBlock,
-      showSlashMenu,
-      wrapSelection,
-    ])
+    }
 
     const handleSlashSelect = useCallback((command: { insert: string }) => {
       const textarea = sourceTextareaRef.current
