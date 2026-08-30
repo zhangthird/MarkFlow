@@ -29,7 +29,7 @@ MarkFlow 默认不是整篇 textarea，也不是每行独立编辑，而是“�
 - thematic break
 - 空块
 
-### 1.2 多行结构
+### 1.2 多行结构与实时 Preview
 
 代码、数学公式和表格不会只编辑第一行，而是整个语义块一起进入编辑状态。
 
@@ -42,12 +42,19 @@ MarkFlow 默认不是整篇 textarea，也不是每行独立编辑，而是“�
 
 这样可以一边修改源码，一边看到最终渲染结果。
 
-### 1.3 Enter / Backspace / 方向键
+### 1.3 Enter / Shift+Enter / Backspace / 方向键
 
 普通段落与标题：
 
 - `Enter` 创建新的 Markdown 段落，而不是只插入一个最终会被 Markdown 合并的软换行。
 - 新段落创建后，编辑焦点进入下一段。
+
+段落、列表与引用：
+
+- `Shift+Enter` 写入标准 Markdown hard line break，即当前行末的两个空格加换行。
+- 列表中的 hard break 会为下一行保留当前 list item 所需的 continuation indentation。
+- blockquote 中的 hard break 会延续当前 `>` 前缀。
+- 代码、block math、table 内的 Enter / Shift+Enter 保持结构块自己的原始换行语义。
 
 列表：
 
@@ -67,11 +74,9 @@ MarkFlow 默认不是整篇 textarea，也不是每行独立编辑，而是“�
 - 光标在源码块起点时按 `↑` 可进入上一块。
 - 光标在源码块末尾时按 `↓` 可进入下一块。
 
-代码、block math、table 内的 Enter 保持结构块自己的原始换行语义。
+### 1.4 点击后的光标与 selection
 
-### 1.4 点击后的光标位置
-
-从渲染状态点击一个块时，MarkFlow 会根据：
+从普通渲染状态点击一个块时，MarkFlow 会根据：
 
 - 点击的水平位置
 - 点击的垂直位置
@@ -80,11 +85,20 @@ MarkFlow 默认不是整篇 textarea，也不是每行独立编辑，而是“�
 
 估算源码 caret 的初始位置，避免每次都跳到块末尾。
 
-这是启发式映射，不是完整 AST position mapping，因此复杂 inline syntax 仍可能存在少量偏差。
+GFM table 使用更精确的单元格映射：
+
+1. 根据 rendered row/cell index 确定目标单元格。
+2. header row 对应 Markdown 第一行。
+3. body row 映射时跳过 GFM divider row。
+4. 对源行扫描 pipe delimiter。
+5. 转义的 `\|` 和 backtick inline code 中的 `|` 不作为 cell separator。
+6. 进入 table source 后直接选中目标 cell 文本。
+
+普通块仍属于启发式位置映射；完整 AST source-position mapping 仍是后续方向。
 
 ## 2. Source Code Mode
 
-MarkFlow 还提供显式的整篇 Markdown 源码模式。
+MarkFlow 提供显式的整篇 Markdown 源码模式。
 
 切换方式：
 
@@ -99,7 +113,7 @@ MarkFlow 还提供显式的整篇 Markdown 源码模式。
 - 自动保存共用。
 - 切回 WYSIWYG 后立即按最新 Markdown 重新渲染。
 
-模式切换时会尽量按当前滚动比例恢复阅读位置，减少长文档从中间位置切换后跳回顶部的问题。
+模式切换时会按当前滚动比例恢复阅读位置，减少长文档从中间位置切换后跳回顶部的问题。
 
 源码模式支持：
 
@@ -157,6 +171,8 @@ fenced code 支持语法高亮，并识别语言标签：
 const value = 1
 ```
 ````
+
+无语言标签且只有一行的 fenced block 仍然按 block code 渲染，不会误判为 inline code。
 
 渲染状态下代码块提供轻量 Copy 按钮；复制操作不会触发外层 Markdown 块进入源码编辑。
 
@@ -478,6 +494,7 @@ Ctrl/Cmd + P
 | `Ctrl/Cmd + I` | Italic |
 | `Ctrl/Cmd + K` | Link |
 | `Enter` | New paragraph / continue list or quote |
+| `Shift + Enter` | Markdown hard line break in paragraph/list/quote |
 | `Tab` | Indent |
 | `Shift + Tab` | Source Mode outdent |
 | `↑ / ↓` | Move across block boundary when caret is at boundary |
@@ -497,10 +514,11 @@ MarkFlow 目前已经明显接近 Typora 的 block-level mixed editing，但还�
 当前主要边界：
 
 - `**bold**`、`[link](url)`、inline math 等 meta syntax 仍以活动块源码的方式显露，而不是精确到当前 inline token 才显露。
-- 渲染 DOM 与 Markdown source 的光标映射目前是启发式，而不是基于 AST source position 的一一映射。
-- 表格目前按整个 table block 编辑，尚未做到点击 rendered cell 后精确选中对应 source cell。
-- `Shift+Enter` 的 WYSIWYG hard-line-break 语义仍需进一步统一。
+- 普通渲染 DOM 与 Markdown source 的光标映射仍主要是启发式；table cell 已有专门的 source-range mapping，但整体还不是完整 AST position mapping。
+- WYSIWYG / Source Mode 切换目前保持滚动比例，而不是精确 source position / selection。
 - 浏览器没有通用 filesystem watch API，外部编辑器修改后的自动刷新仍需设计 Workspace Refresh/diff。
+- 文件 CRUD 的 typed result 目前仍位于 UI adapter 层，底层 store action 仍有 fire-and-forget 历史接口。
+- 关键 parser / filesystem / Wiki / keyboard / persistence race 还缺少专门自动测试。
 - 桌面端尚未加入正式的 Workspace Adapter / Tauri implementation。
 
 这些内容应作为后续工程优化重点，而不是通过继续增加独立编辑模式绕开。
