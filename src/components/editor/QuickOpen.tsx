@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   File,
   FileImage,
@@ -26,6 +26,10 @@ import { FileNode, useEditorStore } from '@/store/editor-store'
 
 const RECENT_FILES_KEY = 'markflow-recent-files'
 const MAX_RECENT_FILES = 8
+const EMPTY_RECENT_PATHS: string[] = []
+
+let recentPathCache: string[] | null = null
+const recentPathListeners = new Set<() => void>()
 
 function collectFiles(nodes: FileNode[]): FileNode[] {
   const result: FileNode[] = []
@@ -42,14 +46,52 @@ function collectFiles(nodes: FileNode[]): FileNode[] {
 }
 
 function readRecentPaths(): string[] {
+  if (recentPathCache) return recentPathCache
+
   try {
     const raw = localStorage.getItem(RECENT_FILES_KEY)
-    if (!raw) return []
+    if (!raw) {
+      recentPathCache = EMPTY_RECENT_PATHS
+      return recentPathCache
+    }
+
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string') : []
+    recentPathCache = Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === 'string')
+      : EMPTY_RECENT_PATHS
+    return recentPathCache
   } catch {
-    return []
+    recentPathCache = EMPTY_RECENT_PATHS
+    return recentPathCache
   }
+}
+
+function subscribeRecentPaths(listener: () => void) {
+  recentPathListeners.add(listener)
+  return () => recentPathListeners.delete(listener)
+}
+
+function emitRecentPathChange() {
+  recentPathListeners.forEach(listener => listener())
+}
+
+function recordRecentPath(path: string) {
+  const current = readRecentPaths()
+  const next = [path, ...current.filter(item => item !== path)].slice(0, MAX_RECENT_FILES)
+
+  if (next.length === current.length && next.every((item, index) => item === current[index])) return
+
+  recentPathCache = next
+  localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(next))
+  emitRecentPathChange()
+}
+
+function useRecentPaths() {
+  return useSyncExternalStore(
+    subscribeRecentPaths,
+    readRecentPaths,
+    () => EMPTY_RECENT_PATHS
+  )
 }
 
 function FileTypeIcon({ file }: { file: FileNode }) {
@@ -62,7 +104,7 @@ function FileTypeIcon({ file }: { file: FileNode }) {
 export function QuickOpen() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [recentPaths, setRecentPaths] = useState<string[]>([])
+  const recentPaths = useRecentPaths()
 
   const files = useEditorStore(state => state.files)
   const currentFile = useEditorStore(state => state.currentFile)
@@ -92,19 +134,11 @@ export function QuickOpen() {
     [flatFiles, recentPathSet]
   )
 
+  // Recent files are persisted outside React. The effect synchronizes the
+  // active workspace file to that external store without maintaining a second
+  // component-state copy of the same data.
   useEffect(() => {
-    setRecentPaths(readRecentPaths())
-  }, [])
-
-  useEffect(() => {
-    if (!currentFile?.path) return
-
-    setRecentPaths(previous => {
-      const next = [currentFile.path, ...previous.filter(path => path !== currentFile.path)]
-        .slice(0, MAX_RECENT_FILES)
-      localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(next))
-      return next
-    })
+    if (currentFile?.path) recordRecentPath(currentFile.path)
   }, [currentFile?.path])
 
   useEffect(() => {
