@@ -29,6 +29,23 @@ const subscribeHydration = () => () => undefined
 const getClientHydrationSnapshot = () => true
 const getServerHydrationSnapshot = () => false
 
+function scrollProgress(element: HTMLElement | null) {
+  if (!element) return 0
+  const maxScroll = element.scrollHeight - element.clientHeight
+  return maxScroll > 0 ? element.scrollTop / maxScroll : 0
+}
+
+function restoreScrollProgress(selector: string, progress: number) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const nextContainer = document.querySelector<HTMLElement>(selector)
+      if (!nextContainer) return
+      const maxScroll = nextContainer.scrollHeight - nextContainer.clientHeight
+      nextContainer.scrollTop = Math.max(0, maxScroll * progress)
+    })
+  })
+}
+
 export default function WorkspacePage() {
   const editorRef = useRef<TyporaEditorRef>(null)
   const [backlinksOpen, setBacklinksOpen] = useState(false)
@@ -54,11 +71,23 @@ export default function WorkspacePage() {
 
   const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
 
+  const toggleSourceMode = useCallback(() => {
+    if (!isTextLikeFile) return
+
+    const currentSelector = sourceMode ? '.markflow-source-mode' : '.markflow-editor'
+    const nextSelector = sourceMode ? '.markflow-editor' : '.markflow-source-mode'
+    const currentContainer = document.querySelector<HTMLElement>(currentSelector)
+    const progress = scrollProgress(currentContainer)
+
+    setSourceMode(value => !value)
+    restoreScrollProgress(nextSelector, progress)
+  }, [isTextLikeFile, sourceMode])
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === '/' && isTextLikeFile) {
         event.preventDefault()
-        setSourceMode(value => !value)
+        toggleSourceMode()
         return
       }
 
@@ -67,7 +96,7 @@ export default function WorkspacePage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [focusMode, isTextLikeFile, toggleFocusMode])
+  }, [focusMode, isTextLikeFile, toggleFocusMode, toggleSourceMode])
 
   const handleContentChange = useCallback((nextContent: string) => {
     updateCurrentFileContent(nextContent)
@@ -215,7 +244,7 @@ export default function WorkspacePage() {
                 variant={sourceMode ? 'secondary' : 'ghost'}
                 size="sm"
                 className="h-5 gap-1 px-1.5 text-[11px] font-normal"
-                onClick={() => setSourceMode(value => !value)}
+                onClick={toggleSourceMode}
                 title={language === 'zh' ? '切换源码模式 (Ctrl+/)' : 'Toggle source mode (Ctrl+/)'}
               >
                 <Code2 className="h-3 w-3" />
