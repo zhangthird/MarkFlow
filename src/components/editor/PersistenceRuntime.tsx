@@ -26,13 +26,32 @@ function snapshotData(file: FileNode, content: string): string {
   return file.fileType === 'excalidraw' ? file.excalidrawData || '{}' : content
 }
 
+function latestContentFor(file: FileNode): string {
+  const state = useEditorStore.getState()
+  return state.currentFile?.path === file.path ? state.content : file.content ?? ''
+}
+
 async function persistSnapshot(file: FileNode, content: string): Promise<boolean> {
   if (!file.handle || !file.isModified) return true
 
   const path = file.path
   const data = snapshotData(file, content)
   const existing = inFlightSaves.get(path)
-  if (existing) return existing
+
+  // FileSystemWritableFileStream writes are serialized per file. If a newer
+  // edit arrives while a write is running, wait for it and immediately persist
+  // the latest dirty snapshot rather than silently dropping that edit.
+  if (existing) {
+    const previousSucceeded = await existing
+    if (!previousSucceeded) return false
+
+    const latestState = useEditorStore.getState()
+    const latestFile = findNodeByPath(latestState.files, path)
+    if (latestFile?.handle && latestFile.isModified) {
+      return persistSnapshot(latestFile, latestContentFor(latestFile))
+    }
+    return true
+  }
 
   const save = (async () => {
     try {
@@ -44,7 +63,7 @@ async function persistSnapshot(file: FileNode, content: string): Promise<boolean
       // while this disk write was in progress.
       const latest = useEditorStore.getState()
       const latestFile = findNodeByPath(latest.files, path)
-      if (latestFile && snapshotData(latestFile, latestFile.content ?? latest.content) === data) {
+      if (latestFile && snapshotData(latestFile, latestContentFor(latestFile)) === data) {
         latest.markFileModified(path, false)
       }
       return true
