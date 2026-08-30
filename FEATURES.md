@@ -1,571 +1,506 @@
 # MarkFlow 功能文档
 
-本文档详细说明 MarkFlow 编辑器的所有功能特性、使用方法和技术实现。
+本文档记录当前 `main` 方向下 MarkFlow 已经实现的产品行为。README 用于快速了解项目；本文件更关注“功能具体怎么工作”。工程边界与后续路线见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
-## 目录
+## 1. Markdown 编辑模型
 
-- [核心编辑功能](#核心编辑功能)
-- [Excalidraw 绘图](#excalidraw-绘图)
-- [Markdown 支持](#markdown-支持)
-- [文件管理](#文件管理)
-- [高级功能](#高级功能)
-- [响应式支持](#响应式支持)
+### 1.1 默认 WYSIWYG
 
----
+MarkFlow 默认不是整篇 textarea，也不是每行独立编辑，而是“活动块源码 + 其他块渲染”的混合模型。
 
-## 核心编辑功能
+基本流程：
 
-### WYSIWYG 所见即所得
+1. Markdown 被解析成语义块。
+2. 未激活块由 `MarkdownRenderer` 渲染。
+3. 点击某个块后，仅该块显示 Markdown 源码 textarea。
+4. 其他块继续保持渲染状态。
+5. 当前块失焦或按 Esc 后重新回到渲染状态。
 
-MarkFlow 提供真正的所见即所得编辑体验：
+当前识别的主要块类型：
 
-**工作原理**：
-1. 内容以渲染后的形式显示（标题、列表、表格等）
-2. 点击任意块进入编辑模式，显示原始 Markdown
-3. 退出编辑（按 Esc 或点击外部）立即重新渲染
+- 标题
+- 普通段落
+- 有序/无序/任务列表
+- blockquote
+- fenced code block
+- Mermaid fenced block
+- block math
+- GFM table
+- thematic break
+- 空块
 
-**支持的块类型**：
-- 标题（H1-H6）
-- 段落
-- 列表（有序、无序、待办）
-- 代码块（带语法高亮）
-- 数学公式（LaTeX）
-- 表格
-- 引用块
-- 分割线
-- Mermaid 图表
+### 1.2 多行结构
 
-### Slash 命令系统
+代码、数学公式和表格不会只编辑第一行，而是整个语义块一起进入编辑状态。
 
-快速插入功能，提高编辑效率。
+对于以下复杂块，编辑源码时会同时保留实时 Preview：
 
-**触发条件**：
-- 在**新行**的**开头**输入 `/`
-- 当前必须在编辑模式中
+- code
+- Mermaid
+- block math
+- table
 
-**可用命令**：
+这样可以一边修改源码，一边看到最终渲染结果。
 
-#### 基础格式
-- `/h1`, `/h2`, `/h3` - 插入标题
-- `/bullet` - 无序列表
-- `/numbered` - 有序列表
-- `/todo` - 待办事项列表
-- `/quote` - 引用块
-- `/divider` - 分割线
+### 1.3 Enter / Backspace / 方向键
 
-#### 内容块
-- `/code` - 代码块模板
-- `/math` - LaTeX 数学公式块
-- `/table` - 表格模板
-- `/mermaid` - Mermaid 流程图模板
+普通段落与标题：
 
-#### 媒体
-- `/link` - 插入链接
-- `/image` - 插入图片
-- `/wikilink` - Wiki 风格链接 `[[文件名]]`
+- `Enter` 创建新的 Markdown 段落，而不是只插入一个最终会被 Markdown 合并的软换行。
+- 新段落创建后，编辑焦点进入下一段。
 
-**使用技巧**：
-- 输入 `/` 后可以继续输入关键词过滤命令
-- 使用 `↑` `↓` 方向键选择
-- `Enter` 确认选择
-- `Esc` 关闭菜单
+列表：
 
----
+- `- item` 按 Enter 自动延续 `- `。
+- `1. item` 自动递增编号。
+- `- [ ] item` 自动创建下一条未完成任务。
+- 空列表项再次 Enter 会退出列表。
 
-## Excalidraw 绘图
+引用：
 
-### 功能概述
+- `> quote` 按 Enter 自动延续 `> `。
+- 空引用行再次 Enter 可退出引用。
 
-集成完整的 Excalidraw 绘图功能，支持手绘风格的图表和示意图。
+块导航：
 
-**创建 Excalidraw 文件**：
-1. 点击侧边栏"新建"按钮
-2. 选择 "Excalidraw"
-3. 输入文件名（自动添加 `.excalidraw` 扩展名）
+- 活动块首部按 Backspace 可与上一块合并。
+- 光标在源码块起点时按 `↑` 可进入上一块。
+- 光标在源码块末尾时按 `↓` 可进入下一块。
 
-### 支持的功能
+代码、block math、table 内的 Enter 保持结构块自己的原始换行语义。
 
-- ✅ **绘图工具**：矩形、圆形、箭头、线条、自由绘制、文本
-- ✅ **导出**：PNG、SVG 格式导出
-- ✅ **主题**：自动跟随编辑器明暗主题
-- ✅ **撤销/重做**：完整的历史记录
-- ✅ **自动保存**：实时保存到本地存储
+### 1.4 点击后的光标位置
 
-### 菜单选项
+从渲染状态点击一个块时，MarkFlow 会根据：
 
-**Export, preferences, and more...** 菜单包含：
-- **Open** - 打开 Excalidraw 文件
-- **Save to...** - 另存为
-- **Export image...** - 导出为图片（PNG/SVG/Clipboard）
-- **Reset the canvas** - 清空画布
-- **Canvas background** - 更改画布背景颜色
+- 点击的水平位置
+- 点击的垂直位置
+- 块中的源文本行数
+- 标题、列表、任务项、引用等 Markdown 前缀
 
-### 技术实现
+估算源码 caret 的初始位置，避免每次都跳到块末尾。
 
-- 使用 `@excalidraw/excalidraw` v0.18.0
-- React 19 兼容
-- 动态加载，避免 SSR 问题
-- 错误边界保护
+这是启发式映射，不是完整 AST position mapping，因此复杂 inline syntax 仍可能存在少量偏差。
 
----
+## 2. Source Code Mode
 
-## Markdown 支持
+MarkFlow 还提供显式的整篇 Markdown 源码模式。
 
-### 标准 Markdown
+切换方式：
 
-完全支持 GitHub Flavored Markdown (GFM)：
+- `Ctrl/Cmd + /`
+- 状态栏 `Source / WYSIWYG` 按钮
+
+两种模式共享同一个 Zustand 文档状态，因此：
+
+- 不存在第二份文档副本。
+- undo/redo 共用同一历史。
+- dirty state 共用。
+- 自动保存共用。
+- 切回 WYSIWYG 后立即按最新 Markdown 重新渲染。
+
+模式切换时会尽量按当前滚动比例恢复阅读位置，减少长文档从中间位置切换后跳回顶部的问题。
+
+源码模式支持：
+
+- `Ctrl/Cmd + B`：粗体
+- `Ctrl/Cmd + I`：斜体
+- `Ctrl/Cmd + K`：链接
+- `Tab`：当前光标缩进或多行统一缩进
+- `Shift + Tab`：当前行或选中多行反向缩进
+
+## 3. Markdown 渲染
+
+### 3.1 GFM
+
+支持 `remark-gfm` 提供的常用 GitHub Flavored Markdown：
 
 ```markdown
-# 标题 1
-## 标题 2
-### 标题 3
+# Heading
 
-**粗体** *斜体* ~~删除线~~
+**bold** *italic* ~~strike~~
 
-- 无序列表
-  - 嵌套项
+- item
+- [ ] task
 
-1. 有序列表
-2. 第二项
+> quote
 
-- [ ] 待办事项
-- [x] 已完成
-
-> 引用块
-
-`行内代码`
-
-​```javascript
-代码块
-​```
-
-[链接](https://example.com)
-![图片](image.png)
-
-| 表头1 | 表头2 |
-|-------|-------|
-| 单元格 | 单元格 |
+| A | B |
+|---|---|
+| 1 | 2 |
 ```
 
-### 数学公式
+### 3.2 数学公式
 
-使用 KaTeX 渲染 LaTeX 公式：
+基于 `remark-math + rehype-katex + KaTeX`。
 
-**行内公式**：
+行内：
+
 ```markdown
 $E = mc^2$
 ```
 
-**块级公式**：
+块级：
+
 ```markdown
 $$
 \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
 $$
 ```
 
-### Mermaid 图表
+### 3.3 代码块
 
-支持多种 Mermaid 图表类型：
+fenced code 支持语法高亮，并识别语言标签：
 
-**流程图**：
-```markdown
-​```mermaid
-graph TD
-    A[开始] --> B{判断}
-    B -->|是| C[处理]
-    B -->|否| D[结束]
-​```
-```
-
-**时序图**：
-```markdown
-​```mermaid
-sequenceDiagram
-    用户->>服务器: 请求
-    服务器-->>用户: 响应
-​```
-```
-
-**甘特图**：
-```markdown
-​```mermaid
-gantt
-    title 项目进度
-    section 阶段1
-    任务1 :a1, 2024-01-01, 7d
-​```
-```
-
-### 双向链接
-
-类似 Obsidian 的 Wiki 链接功能：
-
-**创建链接**：
-```markdown
-参见 [[项目计划.md]] 了解更多
-```
-
-**功能特点**：
-- 自动检测链接目标文件是否存在
-- 点击跳转到目标文件
-- 右侧面板显示反向链接（哪些文件链接到当前文件）
-
----
-
-## 文件管理
-
-### 文件系统集成
-
-**打开文件夹**：
-1. 点击工具栏"打开文件夹"图标
-2. 选择本地文件夹
-3. 授权浏览器访问（仅支持 Chrome/Edge）
-
-**支持的操作**：
-- ✅ 浏览目录树
-- ✅ 创建新文件/文件夹
-- ✅ 重命名
-- ✅ 删除
-- ✅ 保存到磁盘
-
-### 文件类型
-
-| 类型 | 扩展名 | 功能 |
-|------|--------|------|
-| Markdown | `.md` | 完整编辑支持 |
-| 纯文本 | `.txt` | 文本编辑 |
-| Excalidraw | `.excalidraw` | 绘图编辑 |
-| 图片 | `.png`, `.jpg`, `.gif`, `.svg` | 预览 |
-| PDF | `.pdf` | 内嵌预览 |
-| 其他 | - | 文件管理 |
-
-### 自动保存
-
-**保存机制**：
-1. 编辑后文件名显示橙色圆点（未保存标记）
-2. 按 `Ctrl+S` / `Cmd+S` 手动保存
-3. Excalidraw 自动保存（300ms 防抖）
-
-**持久化**：
-- 打开文件夹后，更改保存到实际磁盘
-- 未打开文件夹时，数据保存在浏览器存储
-- 刷新页面自动恢复上次打开的文件夹（需浏览器授权）
-
----
-
-## 高级功能
-
-### 撤销与重做
-
-- **撤销**：`Ctrl+Z` / `Cmd+Z`
-- **重做**：`Ctrl+Shift+Z` / `Ctrl+Y` / `Cmd+Shift+Z`
-- 支持多级历史记录
-
-### 查找功能
-
-- **快捷键**：`Ctrl+F` / `Cmd+F`
-- **跨文件搜索**：搜索所有打开的文件
-- **高亮匹配**：搜索结果高亮显示
-- **快速跳转**：点击结果跳转到对应位置
-
-### 主题切换
-
-- **Dark Mode**：点击工具栏太阳/月亮图标
-- **系统主题**：自动跟随系统设置
-- **持久化**：主题选择保存到本地存储
-- **Excalidraw 同步**：绘图编辑器自动跟随主题
-
-### 专注模式
-
-- **激活**：点击工具栏专注模式按钮
-- **效果**：隐藏侧边栏和工具栏
-- **退出**：按 `Esc` 键
-
-### PDF 导出
-
-- 点击工具栏"打印/导出"图标
-- 浏览器打印对话框选择"另存为 PDF"
-- 保留所有格式（包括数学公式和图表）
-
-### 多语言支持
-
-- **中文/英文**：点击工具栏语言图标切换
-- **自动检测**：首次访问根据浏览器语言设置
-- **持久化**：语言选择保存到本地存储
-
----
-
-## 响应式支持
-
-### 设备适配
-
-MarkFlow 在不同设备上提供优化体验：
-
-**桌面端（>= 1024px）**：
-- 完整侧边栏
-- 所有工具栏按钮
-- 双面板布局（编辑器 + 反向链接）
-
-**平板电脑（768px - 1023px）**：
-- 可折叠侧边栏
-- 精简工具栏
-- 优化触摸交互
-
-**移动端（< 768px）**：
-- 汉堡菜单侧边栏
-- 最小化工具栏
-- 单面板布局
-- 触摸优化的编辑体验
-
-### 技术实现
-
-**Viewport 配置**：
-```javascript
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 5,
-  userScalable: true,
-}
-```
-
-**响应式样式**：
-- Tailwind CSS 断点系统
-- 媒体查询：`sm:`, `md:`, `lg:`, `xl:`
-- 流式布局和弹性盒子
-
-### 浏览器支持
-
-| 浏览器 | 版本 | 支持级别 |
-|--------|------|---------|
-| Chrome | >= 90 | ✅ 完整支持 |
-| Edge | >= 90 | ✅ 完整支持 |
-| Safari | >= 14 | ⚠️ 部分支持* |
-| Firefox | >= 88 | ⚠️ 部分支持* |
-
-*不支持 File System Access API（无法打开本地文件夹）
-
----
-
-## 键盘快捷键
-
-### 全局快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `Ctrl/Cmd + S` | 保存文件 |
-| `Ctrl/Cmd + F` | 打开搜索 |
-| `Ctrl/Cmd + Z` | 撤销 |
-| `Ctrl/Cmd + Shift + Z` | 重做 |
-| `Ctrl/Cmd + Y` | 重做 |
-| `Esc` | 退出编辑/专注模式 |
-
-### 编辑器快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `Enter` | 创建新块 |
-| `Backspace` | 删除空块 |
-| `Tab` | 插入缩进 |
-| `↑` | 移动到上一块（光标在行首时） |
-| `↓` | 移动到下一块（光标在行尾时） |
-| `/` | 打开命令菜单（空行开头） |
-
-### Excalidraw 快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `V` | 选择工具 |
-| `R` | 矩形 |
-| `D` | 菱形 |
-| `O` | 椭圆 |
-| `A` | 箭头 |
-| `L` | 线条 |
-| `P` | 绘制 |
-| `T` | 文本 |
-| `E` | 橡皮擦 |
-| `Ctrl/Cmd + D` | 复制 |
-| `Ctrl/Cmd + Z` | 撤销 |
-| `Ctrl/Cmd + Shift + Z` | 重做 |
-
----
-
-## 开发信息
-
-### 技术栈
-
-- **框架**：Next.js 16 (App Router)
-- **语言**：TypeScript 5
-- **UI**：Tailwind CSS 4 + shadcn/ui
-- **Markdown**：react-markdown + remark-gfm
-- **数学**：KaTeX (rehype-katex)
-- **代码高亮**：react-syntax-highlighter
-- **绘图**：@excalidraw/excalidraw v0.18.0
-- **状态**：Zustand
-- **图标**：Lucide React
-
-### 项目结构
-
-```
-src/
-├── app/
-│   ├── page.tsx          # 主页面
-│   ├── layout.tsx        # 布局和元数据
-│   └── globals.css       # 全局样式
-├── components/
-│   ├── editor/
-│   │   ├── TyporaEditor.tsx      # Markdown 编辑器
-│   │   ├── ExcalidrawEditor.tsx  # Excalidraw 编辑器
-│   │   ├── Sidebar.tsx           # 文件侧边栏
-│   │   ├── Toolbar.tsx           # 工具栏
-│   │   ├── SearchDialog.tsx      # 搜索对话框
-│   │   ├── SlashMenu.tsx         # Slash 命令菜单
-│   │   └── BacklinksPanel.tsx    # 反向链接面板
-│   └── ui/                       # shadcn/ui 组件
-├── store/
-│   └── editor-store.ts           # Zustand 状态管理
-├── lib/
-│   └── i18n.ts                   # 国际化
-└── hooks/                        # 自定义 Hooks
-```
-
-### API 参考
-
-#### EditorStore (Zustand)
-
-主要状态管理 store：
-
+````markdown
 ```typescript
-interface EditorStore {
-  // 文件相关
-  files: FileNode[]
-  currentFile: FileNode | null
-  rootFolderName: string
-  rootHandle: FileSystemDirectoryHandle | null
-  
-  // 编辑相关
-  content: string
-  past: string[]
-  future: string[]
-  
-  // UI 相关
-  sidebarOpen: boolean
-  focusMode: boolean
-  theme: 'light' | 'dark' | 'system'
-  language: 'zh' | 'en'
-  
-  // 方法
-  setFiles: (files: FileNode[]) => void
-  setCurrentFile: (file: FileNode) => void
-  updateCurrentFileContent: (content: string) => void
-  undo: () => void
-  redo: () => void
-  // ... 更多方法
-}
+const value = 1
+```
+````
+
+渲染状态下代码块提供轻量 Copy 按钮；复制操作不会触发外层 Markdown 块进入源码编辑。
+
+### 3.4 Mermaid
+
+Mermaid fenced block：
+
+````markdown
+```mermaid
+graph TD
+  A --> B
+```
+````
+
+行为：
+
+- 渲染为 Mermaid 图表。
+- 源码编辑时保留实时 Preview。
+- 渲染状态可复制 Mermaid source。
+- Mermaid 使用 `securityLevel: strict`。
+- 对图表文本大小和边数量设置限制，降低异常输入带来的资源消耗。
+
+### 3.5 图片
+
+对于 Markdown 中的相对图片路径，MarkFlow 会基于当前文件路径在已加载的工作区树中解析对应图片，并使用本地 Blob URL 预览。
+
+HTTP(S)、data URL 和 blob URL 保持原样。
+
+## 4. 任务列表直接操作
+
+GFM checkbox 在渲染状态下可直接点击。
+
+例如：
+
+```markdown
+- [ ] Write README
 ```
 
----
+点击后直接更新为：
 
-## 故障排除
-
-### 常见问题
-
-**Q: Excalidraw 菜单点击后出现错误**
-A: 确保使用最新版本。旧版本可能存在兼容性问题。
-
-**Q: Slash 命令菜单不出现**
-A: 确保：
-1. 在空行开头输入 `/`
-2. 当前处于编辑模式
-3. 光标位于行首
-
-**Q: 无法保存到磁盘**
-A: 检查：
-1. 是否已打开文件夹
-2. 浏览器是否支持（仅 Chrome/Edge）
-3. 文件夹权限是否正确
-
-**Q: 数学公式不渲染**
-A: 确保：
-1. 使用正确的 LaTeX 语法
-2. 行内公式用单个 `$` 包裹
-3. 块级公式用 `$$` 包裹并换行
-
-**Q: Mermaid 图表不显示**
-A: 检查：
-1. 语法是否正确
-2. 是否使用 ` ```mermaid ` 标记
-3. 图表类型是否支持
-
-### 性能优化
-
-**编辑大文件时卡顿**：
-- 使用 Excalidraw 处理复杂图表
-- 分割大文档为多个小文件
-- 减少实时渲染的内容块数量
-
-**占用存储空间过大**：
-- 定期清理浏览器存储
-- 使用文件夹模式将数据保存到磁盘
-- 压缩图片资源
-
----
-
-## 更新日志
-
-### v1.0.0 (最新)
-
-**新功能**：
-- ✅ WYSIWYG Markdown 编辑
-- ✅ Excalidraw 绘图支持
-- ✅ Slash 命令系统
-- ✅ 双向链接
-- ✅ Mermaid 图表
-- ✅ 数学公式（KaTeX）
-- ✅ 文件系统集成
-- ✅ 响应式设计
-- ✅ 多语言支持
-
-**Bug 修复**：
-- 🐛 修复 Excalidraw 菜单 React Error #130
-- 🐛 添加移动端 viewport 支持
-- 🐛 修复文件保存问题
-
-**技术改进**：
-- ⚡ 升级到 React 19
-- ⚡ 升级到 Next.js 16
-- ⚡ Excalidraw v0.18.0 兼容性
-
----
-
-## 贡献指南
-
-欢迎贡献代码、报告问题或提出建议！
-
-**开发环境设置**：
-```bash
-# 克隆仓库
-git clone https://github.com/zhangthird/MarkFlow.git
-cd MarkFlow
-
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 构建生产版本
-npm run build
+```markdown
+- [x] Write README
 ```
 
-**代码规范**：
-- 使用 TypeScript
-- 遵循 ESLint 规则
-- 编写清晰的注释
-- 保持组件简洁
+checkbox 会按当前 Markdown 块中的任务项顺序映射回对应 source marker。
 
----
+## 5. Slash Menu
 
-## 许可证
+在活动块的空行起始位置输入 `/` 可打开 Slash Menu。
 
-MIT License - 详见 LICENSE 文件
+主要命令包括：
+
+- H1 / H2 / H3
+- bullet list
+- numbered list
+- todo
+- quote
+- divider
+- code block
+- math block
+- table
+- Mermaid
+- link
+- image
+- Wiki Link
+
+菜单会尽量显示在 textarea caret 附近。
+
+键盘操作：
+
+- `↑ / ↓`：选择命令
+- `Enter`：确认
+- `Tab`：确认
+- `Esc`：关闭
+- 继续输入：过滤命令
+
+## 6. Toolbar
+
+工具栏格式化不会再把整个文档切成源码。
+
+当当前存在活动块时，插入/包裹操作直接作用于活动 textarea；没有活动块时，会选择最近活动或合适的默认块进入编辑。
+
+主要操作：
+
+- bold
+- italic
+- inline code
+- inline math
+- heading
+- lists
+- quote
+- code block
+- math block
+- link
+- image
+- table
+- divider
+- save
+- undo/redo
+- search
+- theme/language
+- focus mode
+- PDF print/export
+
+## 7. 本地工作区
+
+### 7.1 目录加载
+
+`useWorkspaceDirectory` 负责打开/恢复工作区；`workspace-loader.ts` 负责目录扫描。
+
+默认跳过：
+
+- `.git`
+- `node_modules`
+- `.next`
+
+文件读取在同一级目录中尽量并发执行，避免大目录完全串行加载。
+
+### 7.2 目录恢复
+
+目录 handle 会持久化到 IndexedDB。
+
+刷新页面时：
+
+1. 尝试找到上次的目录 handle。
+2. 查询当前是否仍有授权。
+3. 如果已有权限，恢复工作区。
+4. 如果权限已失效，不主动在启动阶段调用 `requestPermission()`，而是提示用户通过打开目录操作重新授权。
+
+这样可以避免浏览器“必须由用户手势触发权限请求”的限制导致恢复流程卡死。
+
+### 7.3 文件类型
+
+| File type | Behavior |
+|---|---|
+| Markdown | WYSIWYG + Source Mode |
+| text | 文本编辑 |
+| Excalidraw | 绘图 |
+| image | 主区域预览 |
+| PDF | iframe 内嵌预览 |
+| binary/other | 目录管理与占位信息 |
+
+## 8. 文件 CRUD
+
+支持：
+
+- 创建文件
+- 创建文件夹
+- 删除
+- 重命名
+- 嵌套路径操作
+
+文件系统逻辑集中在 `src/lib/file-system.ts`。
+
+关键行为：
+
+- 创建时解析真正的父目录，而不是始终写到根目录。
+- 删除文件夹使用递归删除。
+- 重命名目录时同步更新所有 descendant path。
+- 浏览器 File System Access API 缺少稳定的跨浏览器原生 rename，当前采用保守的 copy-then-delete 方案。
+- copy 失败时不删除原条目。
+- 文件操作 UI 会等待文件树出现预期变化后再报告成功，避免明显的“假成功”提示。
+- 删除操作有确认交互。
+
+## 9. 自动保存与 dirty state
+
+文本文件采用防抖自动保存。
+
+核心约束：
+
+```text
+isModified = true
+```
+
+表示内存快照比已知磁盘快照更新。
+
+一次异步保存只能在以下条件成立时清除 dirty：
+
+```text
+刚刚写入磁盘的 snapshot === 当前最新 snapshot
+```
+
+如果写盘期间用户又继续输入，旧保存完成不会把新内容错误标记为 clean。
+
+额外行为：
+
+- 切换文件时立即尝试 flush 上一份 dirty local file。
+- 页面隐藏时尝试保存当前文件。
+- `beforeunload` 检查整个文件树，而不是只检查 currentFile。
+- `Ctrl/Cmd + S` 仍可手动保存。
+
+## 10. Undo / Redo
+
+历史按文件隔离。
+
+- `Ctrl/Cmd + Z`
+- `Ctrl/Cmd + Shift + Z`
+- `Ctrl/Cmd + Y`
+
+切换文件后不会把上一文件的编辑历史应用到新文件。
+
+undo/redo 同时更新：
+
+- editor content
+- currentFile content
+- 对应 file tree node
+- dirty state
+
+## 11. Wiki Link 与 Backlinks
+
+支持：
+
+```text
+[[Note]]
+[[Note.md]]
+[[folder/Note]]
+[[Note|Alias]]
+```
+
+解析规则优先考虑：
+
+1. 明确路径
+2. 完整文件名 / 去扩展名文件名
+3. 同名冲突时优先当前 source note 所在目录
+4. 确定性的 fallback candidate
+
+点击 Wiki Link 会打开目标文件。
+
+Backlinks 从当前工作区 Markdown source 中实时推导，不维护单独数据库。
+
+### Rename refactor
+
+重命名 Markdown 笔记时，MarkFlow 会检查哪些 Wiki Link 在重命名前真正解析到了该文件，只更新这些引用。
+
+因此不会因为存在两个同名 `Note.md` 就简单把整个工作区中的 `[[Note]]` 全部替换。
+
+原始链接形式会尽量保持，例如：
+
+```text
+[[Note]]            → [[Renamed]]
+[[Note.md]]         → [[Renamed.md]]
+[[folder/Note]]     → [[folder/Renamed]]
+[[Note|Alias]]      → [[Renamed|Alias]]
+```
+
+## 12. Quick Open / Command Palette
+
+快捷键：
+
+```text
+Ctrl/Cmd + P
+```
+
+功能：
+
+- 文件名/路径搜索
+- 最近打开文件排序
+- 打开 Markdown、图片、PDF、Excalidraw 等
+- 标记当前文件和 dirty file
+- 保存
+- 打开全文搜索
+- 专注模式
+- 侧边栏切换
+
+最近文件信息保存在浏览器本地状态中。
+
+## 13. 全文搜索
+
+`Ctrl/Cmd + F`：
+
+- 搜索工作区已加载的文本文件
+- 展示上下文
+- 结果前后导航
+- Enter/导航按钮实际切换目标文件
+- 清空 query 时同步清空旧结果
+
+## 14. Excalidraw
+
+使用 `@excalidraw/excalidraw`。
+
+- 动态加载，避免 SSR 问题。
+- 跟随主题。
+- `.excalidraw` / `.excalidraw.json` 纳入工作区文件树。
+- 支持 Excalidraw 自带导出能力。
+
+## 15. Focus / Theme / Language
+
+### Focus Mode
+
+隐藏主要应用 chrome，减少写作干扰。`Esc` 退出。
+
+### Theme
+
+亮色/暗色偏好保存到浏览器本地状态；Mermaid、Excalidraw 和 Markdown renderer 跟随主题。
+
+### Language
+
+支持中文/英文 UI 切换并持久化偏好。
+
+## 16. 快捷键汇总
+
+### Global
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl/Cmd + P` | Quick Open |
+| `Ctrl/Cmd + F` | Search |
+| `Ctrl/Cmd + S` | Save |
+| `Ctrl/Cmd + Z` | Undo |
+| `Ctrl/Cmd + Shift + Z` / `Ctrl/Cmd + Y` | Redo |
+| `Ctrl/Cmd + /` | WYSIWYG / Source Mode |
+| `Esc` | Exit active block / Focus Mode |
+
+### Markdown editing
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl/Cmd + B` | Bold |
+| `Ctrl/Cmd + I` | Italic |
+| `Ctrl/Cmd + K` | Link |
+| `Enter` | New paragraph / continue list or quote |
+| `Tab` | Indent |
+| `Shift + Tab` | Source Mode outdent |
+| `↑ / ↓` | Move across block boundary when caret is at boundary |
+| `/` at empty line | Slash Menu |
+
+## 17. 浏览器支持
+
+完整 local-folder 工作流依赖 File System Access API。
+
+- Chromium 系浏览器：主要目标环境。
+- Safari / Firefox：Markdown 编辑和部分页面能力可以工作，但直接本地文件夹访问能力可能不可用或不完整。
+
+## 18. 当前已知边界
+
+MarkFlow 目前已经明显接近 Typora 的 block-level mixed editing，但还不是完整的富文本 inline editor。
+
+当前主要边界：
+
+- `**bold**`、`[link](url)`、inline math 等 meta syntax 仍以活动块源码的方式显露，而不是精确到当前 inline token 才显露。
+- 渲染 DOM 与 Markdown source 的光标映射目前是启发式，而不是基于 AST source position 的一一映射。
+- 表格目前按整个 table block 编辑，尚未做到点击 rendered cell 后精确选中对应 source cell。
+- `Shift+Enter` 的 WYSIWYG hard-line-break 语义仍需进一步统一。
+- 浏览器没有通用 filesystem watch API，外部编辑器修改后的自动刷新仍需设计 Workspace Refresh/diff。
+- 桌面端尚未加入正式的 Workspace Adapter / Tauri implementation。
+
+这些内容应作为后续工程优化重点，而不是通过继续增加独立编辑模式绕开。
