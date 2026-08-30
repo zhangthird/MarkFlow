@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { PersistenceRuntime } from "@/components/editor/PersistenceRuntime";
 import { QuickOpen } from "@/components/editor/QuickOpen";
+import { WikiLinkRenameRuntime } from "@/components/editor/WikiLinkRenameRuntime";
 
 export const metadata: Metadata = {
   title: "MarkFlow - WYSIWYG Markdown Editor",
@@ -33,6 +34,7 @@ export default function RootLayout({
       >
         {children}
         <PersistenceRuntime />
+        <WikiLinkRenameRuntime />
         <QuickOpen />
         <Toaster position="bottom-center" />
       </body>
