@@ -205,7 +205,7 @@ This browser-specific layer should eventually implement a generic workspace adap
 
 ## Markdown editor boundary
 
-The editor is now split into focused layers instead of one large `TyporaEditor.tsx`.
+The editor is split into focused layers instead of one large `TyporaEditor.tsx`.
 
 ```text
 Markdown source
@@ -244,9 +244,11 @@ Owns:
 - active-block editing;
 - block-to-block keyboard movement;
 - paragraph creation;
+- Markdown hard-line-break insertion for paragraph/list/blockquote source;
 - list/task/quote continuation;
 - slash menu integration;
 - source selection/caret behavior;
+- rendered-table-cell to source-cell range mapping;
 - complex-block live preview.
 
 It must not perform workspace persistence.
@@ -267,6 +269,7 @@ Owns rendered output and rendering-specific interactions:
 - Mermaid;
 - Wiki Link rendering;
 - task checkbox interaction;
+- table cell click routing back to the editing controller;
 - relative local image resolution hooks;
 - rendered code/Mermaid copy actions.
 
@@ -280,6 +283,8 @@ active block   -> Markdown source textarea
 ```
 
 This provides strong Markdown fidelity with relatively simple state semantics, but it has a known boundary: inline meta syntax such as `**`, `[]()`, and `$...$` is exposed at block granularity rather than only around the focused inline token.
+
+Table cells are an intentional exception to the generic click heuristic: rendered table coordinates are mapped back to source row/cell ranges, and the corresponding Markdown cell is selected when editing begins. The mapping skips the GFM divider row and ignores escaped pipes / pipes inside backtick spans when locating delimiters.
 
 Before replacing this design with ProseMirror/Lexical/contenteditable, any proposal must preserve:
 
@@ -399,7 +404,7 @@ Desktop-only concerns:
 
 ## Testing priorities
 
-The project now has CI lint + production build validation, but regression-sensitive editor logic needs focused automated tests.
+The project has CI lint + production build validation, but regression-sensitive editor logic still needs focused automated tests.
 
 Highest-value targets:
 
@@ -407,22 +412,21 @@ Highest-value targets:
 2. `file-operations.ts` result/postcondition behavior;
 3. `wiki-links.ts` duplicate-name resolution and rename rewriting;
 4. `markdown-blocks.ts` ranges for paragraphs/lists/code/math/tables;
-5. editor keyboard transitions (Enter, list continuation, Backspace merge);
-6. save snapshot race behavior.
+5. editor keyboard transitions (Enter, Shift+Enter, list continuation, Backspace merge);
+6. table source-cell mapping including escaped/code-span pipes;
+7. save snapshot race behavior.
 
 ## Current engineering roadmap
 
 Already completed items should not remain in the roadmap. The current priorities are:
 
-1. **Precise table editing** — map a rendered table cell to its source cell/range.
-2. **Line-break semantics** — align WYSIWYG `Shift+Enter` hard-line-break behavior with the intended Markdown representation.
-3. **Source/render position mapping** — move from scroll-ratio preservation toward source-position-aware WYSIWYG/Source Mode transitions.
-4. **Workspace Refresh** — rescan and diff external filesystem changes without overwriting local dirty edits.
-5. **Typed CRUD at the action boundary** — replace fire-and-forget store CRUD with promises returning typed operation results directly.
-6. **Automated tests** — cover parser, path mutation, Wiki Link resolution, keyboard transitions, and persistence races.
-7. **Inline syntax focus model** — evaluate source-position-aware inline marker reveal/hide while retaining Markdown as the only durable model.
-8. **WorkspaceAdapter + Tauri** — add the abstraction first, then desktop packaging/local storage integration.
-9. **Dependency cleanup** — reconcile lockfile/dependency drift and React-19/Excalidraw peer ranges independently of editor feature PRs.
+1. **Source/render position mapping** — move from scroll-ratio preservation toward source-position-aware WYSIWYG/Source Mode transitions.
+2. **Workspace Refresh** — rescan and diff external filesystem changes without overwriting local dirty edits.
+3. **Typed CRUD at the action boundary** — replace fire-and-forget store CRUD with promises returning typed operation results directly.
+4. **Automated tests** — cover parser, path mutation, Wiki Link resolution, table source mapping, keyboard transitions, and persistence races.
+5. **Inline syntax focus model** — evaluate source-position-aware inline marker reveal/hide while retaining Markdown as the only durable model.
+6. **WorkspaceAdapter + Tauri** — add the abstraction first, then desktop packaging/local storage integration.
+7. **Dependency cleanup** — reconcile lockfile/dependency drift and React-19/Excalidraw peer ranges independently of editor feature PRs.
 
 ## CI / dependency note
 

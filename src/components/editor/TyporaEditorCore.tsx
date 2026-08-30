@@ -37,6 +37,11 @@ interface PendingInsert {
   after: string
 }
 
+interface SourceSelection {
+  start: number
+  end: number
+}
+
 const LIVE_PREVIEW_KINDS = new Set<MarkdownBlock['kind']>(['code', 'math', 'table'])
 
 function resizeTextarea(textarea: HTMLTextAreaElement) {
@@ -62,6 +67,76 @@ function estimateSourceCursor(block: MarkdownBlock, event: React.MouseEvent<HTML
   const linePosition = Math.min(line.length, marker.length + Math.round(sourceTextLength * xRatio))
   const precedingLength = lines.slice(0, lineIndex).reduce((sum, value) => sum + value.length + 1, 0)
   return precedingLength + linePosition
+}
+
+function tableCellRanges(line: string): SourceSelection[] {
+  const separators: number[] = []
+  let codeFenceLength = 0
+
+  for (let index = 0; index < line.length;) {
+    const char = line[index]
+
+    if (char === '\\') {
+      index += 2
+      continue
+    }
+
+    if (char === '`') {
+      let runLength = 1
+      while (line[index + runLength] === '`') runLength += 1
+      if (codeFenceLength === 0) codeFenceLength = runLength
+      else if (runLength === codeFenceLength) codeFenceLength = 0
+      index += runLength
+      continue
+    }
+
+    if (char === '|' && codeFenceLength === 0) separators.push(index)
+    index += 1
+  }
+
+  const segments: SourceSelection[] = []
+  let start = 0
+  for (const separator of separators) {
+    segments.push({ start, end: separator })
+    start = separator + 1
+  }
+  segments.push({ start, end: line.length })
+
+  if (segments.length > 1 && line.slice(segments[0].start, segments[0].end).trim() === '') {
+    segments.shift()
+  }
+  if (segments.length > 1) {
+    const last = segments[segments.length - 1]
+    if (line.slice(last.start, last.end).trim() === '') segments.pop()
+  }
+
+  return segments.map(segment => {
+    const raw = line.slice(segment.start, segment.end)
+    const leading = raw.match(/^\s*/)?.[0].length ?? 0
+    const trailing = raw.match(/\s*$/)?.[0].length ?? 0
+    const cellStart = segment.start + leading
+    const cellEnd = Math.max(cellStart, segment.end - trailing)
+    return { start: cellStart, end: cellEnd }
+  })
+}
+
+function tableCellSelection(blockContent: string, renderedRowIndex: number, cellIndex: number): SourceSelection | null {
+  const lines = blockContent.split('\n')
+  const sourceRowIndex = renderedRowIndex === 0 ? 0 : renderedRowIndex + 1
+  const line = lines[sourceRowIndex]
+  if (line === undefined) return null
+
+  const range = tableCellRanges(line)[cellIndex]
+  if (!range) return null
+
+  const precedingLength = lines
+    .slice(0, sourceRowIndex)
+    .reduce((sum, value) => sum + value.length + 1, 0)
+
+  return {
+    start: precedingLength + range.start,
+    end: precedingLength + range.end,
+  }
 }
 
 function caretViewportPosition(textarea: HTMLTextAreaElement, position: number) {
@@ -129,7 +204,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
   function TyporaEditor({ content, onChange }, ref) {
     const sourceTextareaRef = useRef<HTMLTextAreaElement>(null)
     const lastActiveStartRef = useRef<number | null>(null)
-    const pendingSelectionRef = useRef<{ start: number; end: number } | null>(null)
+    const pendingSelectionRef = useRef<SourceSelection | null>(null)
     const pendingInsertRef = useRef<PendingInsert | null>(null)
     const slashStartPos = useRef<number | null>(null)
 
@@ -165,9 +240,11 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       onChange(result.content)
     }, [content, editingRange, onChange])
 
-    const activateBlock = useCallback((block: MarkdownBlock, cursor?: number) => {
+    const activateBlock = useCallback((block: MarkdownBlock, selection?: number | SourceSelection) => {
       lastActiveStartRef.current = block.startLine
-      pendingSelectionRef.current = cursor === undefined ? null : { start: cursor, end: cursor }
+      pendingSelectionRef.current = typeof selection === 'number'
+        ? { start: selection, end: selection }
+        : selection ?? null
       setEditingRange({ startLine: block.startLine, endLine: block.endLine })
       setShowSlashMenu(false)
       slashStartPos.current = null
@@ -311,6 +388,11 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       onChange(result.content)
     }, [content, onChange])
 
+    const handleTableCellClick = useCallback((block: MarkdownBlock, rowIndex: number, cellIndex: number) => {
+      const selection = tableCellSelection(block.content, rowIndex, cellIndex)
+      activateBlock(block, selection ?? block.content.length)
+    }, [activateBlock])
+
     const showSlashMenuAtCaret = useCallback((textarea: HTMLTextAreaElement, slashPositionInSource: number) => {
       slashStartPos.current = slashPositionInSource + 1
       setSlashFilter('')
@@ -408,6 +490,37 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       return true
     }, [content, editingRange, onChange])
 
+    const insertHardBreak = (textarea: HTMLTextAreaElement) => {
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const source = textarea.value
+      const lineStart = source.lastIndexOf('\n', start - 1) + 1
+      const beforeCursor = source.slice(lineStart, start)
+
+      let continuation = ''
+      if (activeBlockKind === 'blockquote') {
+        continuation = beforeCursor.match(/^(\s*(?:>\s*)+)/)?.[1] ?? ''
+      } else if (activeBlockKind === 'list') {
+        const marker = beforeCursor.match(/^(\s*(?:(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?))/)?.[1]
+        continuation = marker
+          ? ' '.repeat(marker.length)
+          : beforeCursor.match(/^(\s+)/)?.[1] ?? ''
+      }
+
+      const insertion = `  \n${continuation}`
+      const nextValue = source.slice(0, start) + insertion + source.slice(end)
+      commitSourceValue(nextValue)
+      const nextCursor = start + insertion.length
+
+      requestAnimationFrame(() => {
+        const nextTextarea = sourceTextareaRef.current
+        if (!nextTextarea) return
+        nextTextarea.focus()
+        nextTextarea.setSelectionRange(nextCursor, nextCursor)
+        resizeTextarea(nextTextarea)
+      })
+    }
+
     const handleSourceKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = event.currentTarget
 
@@ -478,7 +591,16 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       }
 
       if (event.key !== 'Enter') return
-      if (event.shiftKey || activeBlockKind === 'code' || activeBlockKind === 'math' || activeBlockKind === 'table') return
+
+      if (event.shiftKey) {
+        if (activeBlockKind === 'paragraph' || activeBlockKind === 'list' || activeBlockKind === 'blockquote') {
+          event.preventDefault()
+          insertHardBreak(textarea)
+        }
+        return
+      }
+
+      if (activeBlockKind === 'code' || activeBlockKind === 'math' || activeBlockKind === 'table') return
 
       const cursor = textarea.selectionStart
       const source = textarea.value
@@ -633,6 +755,9 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
                       isDark={isDark}
                       onWikiLinkClick={handleWikiLinkClick}
                       onTaskToggle={(taskIndex, checked) => handleTaskToggle(block, taskIndex, checked)}
+                      onTableCellClick={block.kind === 'table'
+                        ? (rowIndex, cellIndex) => handleTableCellClick(block, rowIndex, cellIndex)
+                        : undefined}
                       resolveImageSrc={resolveImageSrc}
                     />
                   )}

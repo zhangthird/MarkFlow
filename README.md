@@ -24,9 +24,11 @@ MarkFlow 默认使用块级 WYSIWYG 编辑模型：
 - 段落、标题、列表、引用、代码块、数学公式和表格按 Markdown 语义分块，而不是简单逐行拆分。
 - 代码、数学公式、Mermaid 和表格在源码编辑时保留实时预览。
 - 普通段落中按 `Enter` 创建真正的新 Markdown 段落。
+- 段落、列表和引用中按 `Shift+Enter` 写入真正的 Markdown hard line break；列表/引用会保留当前结构缩进或前缀。
 - 列表、任务列表和引用支持连续输入与自然退出。
 - 块首 `Backspace` 可与上一块合并；在块边界可使用方向键进入相邻块。
-- 点击渲染内容时会尽量把源码光标定位到对应位置，而不是总跳到块末尾。
+- 点击普通渲染内容时会尽量把源码光标定位到对应位置，而不是总跳到块末尾。
+- 点击 GFM 表格中的某个 rendered cell 会直接进入 table source，并选中对应 Markdown cell；映射会跳过 divider row，并处理转义 pipe 与 inline code 中的 pipe。
 - `Ctrl/Cmd + B`、`Ctrl/Cmd + I`、`Ctrl/Cmd + K` 可直接操作活动块。
 
 ### Source Code Mode
@@ -37,7 +39,7 @@ MarkFlow 默认使用块级 WYSIWYG 编辑模型：
 - 状态栏也提供切换按钮。
 - 两种模式共享同一份 `content`、undo/redo、dirty state、自动保存和本地文件写入流程。
 - 模式切换会尽量保留当前阅读位置，避免长文档跳回顶部。
-- 源码模式支持 Tab/多行缩进以及常用 Markdown 格式快捷键。
+- 源码模式支持 Tab/多行缩进、`Shift+Tab` 反向缩进以及常用 Markdown 格式快捷键。
 
 ### Markdown / GFM / 数学 / Mermaid
 
@@ -196,7 +198,9 @@ MarkFlow 集成 `@excalidraw/excalidraw`：
 | `Ctrl/Cmd + K` | 链接 |
 | `/`（空行） | Slash Menu |
 | `Enter` | 新段落 / 延续列表或引用 |
-| `Tab` | 缩进 |
+| `Shift+Enter` | 段落/列表/引用中的 hard line break |
+| `Tab` | 缩进；Source Mode 支持多行缩进 |
+| `Shift+Tab` | Source Mode 反向缩进 |
 | `Esc` | 退出活动块；专注模式下退出专注模式 |
 
 ## 技术栈
@@ -226,7 +230,7 @@ src/
 │   │   └── WorkspacePage.tsx       # 应用壳层与编辑/预览布局
 │   └── editor/
 │       ├── TyporaEditor.tsx        # WYSIWYG / Source Mode 入口
-│       ├── TyporaEditorCore.tsx    # 块级编辑与键盘控制
+│       ├── TyporaEditorCore.tsx    # 块级编辑与键盘/selection 控制
 │       ├── markdown/
 │       │   ├── markdown-blocks.ts  # Markdown 语义块解析
 │       │   └── MarkdownRenderer.tsx
@@ -241,6 +245,7 @@ src/
 │   └── useAppPreferences.ts
 ├── lib/
 │   ├── file-system.ts
+│   ├── file-operations.ts
 │   ├── workspace-loader.ts
 │   ├── workspace-persistence.ts
 │   └── wiki-links.ts
@@ -292,14 +297,13 @@ MarkFlow 的核心编辑与渲染是 Web 应用，但“直接打开并写回本
 
 近期重点不是继续堆更多工具栏按钮，而是把已有能力做得更稳定、更接近真正的文档编辑器：
 
-1. 更精确的表格单元格编辑和光标映射。
-2. `Shift+Enter` 等细节与 Typora 的段落/硬换行语义进一步一致。
-3. 更好的 WYSIWYG / Source Mode 光标与滚动位置映射。
-4. 外部文件变化检测与 Workspace Refresh。
-5. 进一步统一文件 CRUD 的 typed result/error API。
-6. 为路径变换、Wiki Link、Markdown block parser 和键盘行为补测试。
-7. 评估 inline Markdown syntax 按焦点显隐的编辑模型，而不破坏 Markdown 文件作为唯一真源的原则。
-8. 稳定 Workspace Adapter 后再推进 Tauri 桌面打包。
+1. 更好的 WYSIWYG / Source Mode 光标与滚动位置映射：从当前滚动比例进一步升级到 source-position-aware mapping。
+2. 外部文件变化检测与 Workspace Refresh，且不能覆盖 MarkFlow 内尚未保存的 dirty 内容。
+3. 进一步统一文件 CRUD 的 typed result/error API，让底层 action 直接返回结果而不是由 UI 观察后置状态。
+4. 为路径变换、Wiki Link、Markdown block parser、表格 source mapping、键盘行为和 autosave race 补自动测试。
+5. 评估 inline Markdown syntax 按焦点显隐的编辑模型，而不破坏 Markdown 文件作为唯一真源的原则。
+6. 稳定 Workspace Adapter 后再推进 Tauri 桌面打包。
+7. 单独处理依赖/lockfile 与 React 19 / Excalidraw peer-range 兼容性债务。
 
 ## License
 
