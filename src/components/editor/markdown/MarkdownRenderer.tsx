@@ -115,6 +115,7 @@ interface MarkdownRendererProps {
   isDark: boolean
   onWikiLinkClick?: (target: string) => void
   onTaskToggle?: (taskIndex: number, checked: boolean) => void
+  onTableCellClick?: (rowIndex: number, cellIndex: number) => void
   resolveImageSrc?: (src?: string) => string | undefined
 }
 
@@ -123,8 +124,17 @@ export function MarkdownRenderer({
   isDark,
   onWikiLinkClick,
   onTaskToggle,
+  onTableCellClick,
   resolveImageSrc,
 }: MarkdownRendererProps) {
+  const handleTableCellClick = (event: React.MouseEvent<HTMLTableCellElement>) => {
+    if (!onTableCellClick) return
+    event.stopPropagation()
+    const row = event.currentTarget.parentElement as HTMLTableRowElement | null
+    if (!row) return
+    onTableCellClick(row.rowIndex, event.currentTarget.cellIndex)
+  }
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
@@ -221,6 +231,12 @@ export function MarkdownRenderer({
           <div className="markflow-table-wrap">
             <table>{children}</table>
           </div>
+        ),
+        th: ({ children, ...props }) => (
+          <th {...props} onClick={handleTableCellClick}>{children}</th>
+        ),
+        td: ({ children, ...props }) => (
+          <td {...props} onClick={handleTableCellClick}>{children}</td>
         ),
         input: ({ type, checked, ...props }) => {
           if (type !== 'checkbox') {
