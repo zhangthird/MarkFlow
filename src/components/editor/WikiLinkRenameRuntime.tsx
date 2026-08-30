@@ -97,6 +97,19 @@ async function persistRewrite(rewrite: ContentRewrite): Promise<boolean> {
 export function WikiLinkRenameRuntime() {
   useEffect(() => {
     const unsubscribe = useEditorStore.subscribe((state, previousState) => {
+      // The file tree also changes for ordinary edits because the active node is
+      // replaced with an updated immutable copy. Bail out before any workspace
+      // traversal for the editor hot path; rename detection should only pay its
+      // O(workspace) cost for structural/metadata mutations such as CRUD.
+      if (state.files === previousState.files) return
+
+      const sameActivePath = state.currentFile?.path === previousState.currentFile?.path
+      if (sameActivePath && state.content !== previousState.content) return
+      if (
+        sameActivePath &&
+        state.currentFile?.excalidrawData !== previousState.currentFile?.excalidrawData
+      ) return
+
       const rename = detectSingleMarkdownRename(previousState.files, state.files)
       if (!rename) return
 
