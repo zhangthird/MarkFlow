@@ -257,7 +257,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       const imageNode = collectWorkspaceFiles(files).find(file => file.path === normalizedPath)
       if (imageNode?.fileType === 'image' && imageNode.blobUrl) return imageNode.blobUrl
       return src
-    }, [currentFile?.path, files])
+    }, [currentFile, files])
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === 'Tab') {
