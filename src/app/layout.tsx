@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { PersistenceRuntime } from "@/components/editor/PersistenceRuntime";
 
 export const metadata: Metadata = {
   title: "MarkFlow - WYSIWYG Markdown Editor",
@@ -30,6 +31,7 @@ export default function RootLayout({
         className="antialiased bg-background text-foreground"
       >
         {children}
+        <PersistenceRuntime />
         <Toaster position="bottom-center" />
       </body>
     </html>
