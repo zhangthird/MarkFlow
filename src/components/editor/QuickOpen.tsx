@@ -8,6 +8,7 @@ import {
   Focus,
   PanelLeft,
   Pencil,
+  RefreshCw,
   Save,
   Search,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ import {
   CommandShortcut,
 } from '@/components/ui/command'
 import { FileNode, useEditorStore } from '@/store/editor-store'
+import { refreshWorkspaceFromDisk } from '@/lib/workspace-refresh'
 
 const RECENT_FILES_KEY = 'markflow-recent-files'
 const MAX_RECENT_FILES = 8
@@ -173,6 +175,33 @@ export function QuickOpen() {
     }
   }, [close, language, saveCurrentFile])
 
+  const handleRefresh = useCallback(async () => {
+    close()
+    const result = await refreshWorkspaceFromDisk()
+
+    if (result.ok) {
+      toast.success(language === 'zh' ? '工作区已从磁盘刷新' : 'Workspace refreshed from disk')
+      return
+    }
+
+    if (result.code === 'dirty_files') {
+      const count = result.dirtyPaths?.length ?? 0
+      toast.warning(
+        language === 'zh'
+          ? `仍有 ${count} 个未保存文件，已取消刷新以避免覆盖修改。`
+          : `${count} unsaved file${count === 1 ? '' : 's'} detected. Refresh was cancelled to protect your edits.`
+      )
+      return
+    }
+
+    if (result.code === 'no_workspace') {
+      toast.info(language === 'zh' ? '请先打开一个本地工作区。' : 'Open a local workspace first.')
+      return
+    }
+
+    toast.error(language === 'zh' ? '刷新工作区失败' : 'Failed to refresh workspace')
+  }, [close, language])
+
   const runAndClose = useCallback((action: () => void) => {
     close()
     action()
@@ -249,6 +278,13 @@ export function QuickOpen() {
             <Search className="h-4 w-4" />
             <span>{language === 'zh' ? '搜索工作区内容' : 'Search workspace content'}</span>
             <CommandShortcut>Ctrl F</CommandShortcut>
+          </CommandItem>
+          <CommandItem
+            value={language === 'zh' ? '刷新 工作区 磁盘 重新扫描' : 'refresh workspace disk rescan'}
+            onSelect={() => void handleRefresh()}
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>{language === 'zh' ? '从磁盘刷新工作区' : 'Refresh workspace from disk'}</span>
           </CommandItem>
           <CommandItem
             value={language === 'zh' ? '保存 当前 文件' : 'save current file'}
