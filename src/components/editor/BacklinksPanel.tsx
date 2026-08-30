@@ -1,82 +1,23 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { useEditorStore, FileNode } from '@/store/editor-store'
+import { useEditorStore } from '@/store/editor-store'
+import {
+  collectWorkspaceFiles,
+  extractWikiLinks,
+  resolveWikiLinkTarget,
+  WikiLinkReference,
+} from '@/lib/wiki-links'
 import { Link, FileText, ChevronRight, ChevronDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-
-interface LinkReference {
-  sourcePath: string
-  sourceName: string
-  targetName: string
-  line: number
-  context: string
-}
 
 interface BacklinksPanelProps {
   onClose?: () => void
 }
 
-const WIKI_LINK_REGEX = /\[\[([^\]\.]+\.[^\]]+)\]\]/g
-
-const normalizeFileName = (name: string) => name.toLowerCase()
-
-const normalizeFileNameWithoutExt = (name: string) =>
-  name.replace(/\.[^.]+$/, '').toLowerCase()
-
-const extractWikiLinks = (
-  content: string,
-  sourcePath: string,
-  sourceName: string
-): LinkReference[] => {
-  const links: LinkReference[] = []
-  const lines = content.split('\n')
-
-  let match: RegExpExecArray | null
-  while ((match = WIKI_LINK_REGEX.exec(content)) !== null) {
-    const targetName = match[1].trim()
-    const position = match.index
-
-    let currentPos = 0
-    let lineNumber = 1
-    for (let i = 0; i < lines.length; i++) {
-      if (currentPos + lines[i].length >= position) {
-        lineNumber = i + 1
-        break
-      }
-      currentPos += lines[i].length + 1
-    }
-
-    links.push({
-      sourcePath,
-      sourceName,
-      targetName,
-      line: lineNumber,
-      context: lines[lineNumber - 1] || ''
-    })
-  }
-
-  WIKI_LINK_REGEX.lastIndex = 0
-  return links
-}
-
-const collectFiles = (nodes: FileNode[]): FileNode[] => {
-  const result: FileNode[] = []
-
-  const traverse = (items: FileNode[]) => {
-    for (const node of items) {
-      if (node.type === 'file') result.push(node)
-      if (node.children) traverse(node.children)
-    }
-  }
-
-  traverse(nodes)
-  return result
-}
-
 export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
-  const { files, currentFile, setCurrentFile, setContent, language } = useEditorStore()
+  const { files, currentFile, setCurrentFile, language } = useEditorStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
 
@@ -91,63 +32,36 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [onClose])
 
-  const flatFiles = useMemo(() => collectFiles(files), [files])
-
-  const fileIndex = useMemo(() => {
-    const fullNameMap = new Map<string, FileNode>()
-    const withoutExtMap = new Map<string, FileNode>()
-
-    for (const file of flatFiles) {
-      fullNameMap.set(normalizeFileName(file.name), file)
-      withoutExtMap.set(normalizeFileNameWithoutExt(file.name), file)
-    }
-
-    return { fullNameMap, withoutExtMap }
-  }, [flatFiles])
+  const flatFiles = useMemo(() => collectWorkspaceFiles(files), [files])
 
   const allLinks = useMemo(() => {
-    const links: LinkReference[] = []
-    for (const file of flatFiles) {
-      if (file.content) {
-        links.push(...extractWikiLinks(file.content, file.path, file.name))
-      }
-    }
-    return links
+    return flatFiles.flatMap(file =>
+      file.content ? extractWikiLinks(file.content, file.path, file.name) : []
+    )
   }, [flatFiles])
 
   const backlinks = useMemo(() => {
     if (!currentFile) return []
 
-    const currentFileName = normalizeFileName(currentFile.name)
-    const currentFileNameWithoutExt = normalizeFileNameWithoutExt(currentFile.name)
-
-    return allLinks.filter((link) => {
-      const linkTarget = normalizeFileName(link.targetName)
-      const linkTargetWithoutExt = normalizeFileNameWithoutExt(link.targetName)
-      return linkTarget === currentFileName || linkTargetWithoutExt === currentFileNameWithoutExt
+    return allLinks.filter(link => {
+      const target = resolveWikiLinkTarget(flatFiles, link.targetName, link.sourcePath)
+      return target?.path === currentFile.path
     })
-  }, [currentFile, allLinks])
+  }, [allLinks, currentFile, flatFiles])
 
   const outgoingLinks = useMemo(() => {
     if (!currentFile?.content) return []
     return extractWikiLinks(currentFile.content, currentFile.path, currentFile.name)
   }, [currentFile])
 
-  const findFileByName = (name: string): FileNode | null => {
-    const fullName = fileIndex.fullNameMap.get(normalizeFileName(name))
-    if (fullName) return fullName
-
-    return fileIndex.withoutExtMap.get(normalizeFileNameWithoutExt(name)) ?? null
-  }
-
-  const navigateToFile = (file: FileNode) => {
-    setCurrentFile(file)
-    setContent(file.content || '')
+  const navigateToPath = (path: string) => {
+    const file = flatFiles.find(item => item.path === path)
+    if (file) setCurrentFile(file)
   }
 
   const toggleExpanded = (path: string) => {
-    setExpandedFiles((prev) => {
-      const next = new Set(prev)
+    setExpandedFiles(previous => {
+      const next = new Set(previous)
       if (next.has(path)) next.delete(path)
       else next.add(path)
       return next
@@ -155,23 +69,20 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
   }
 
   const filteredBacklinks = useMemo(() => {
-    if (!searchQuery) return backlinks
-    const query = searchQuery.toLowerCase()
-    return backlinks.filter(
-      (link) =>
-        link.sourceName.toLowerCase().includes(query) || link.context.toLowerCase().includes(query)
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return backlinks
+
+    return backlinks.filter(link =>
+      link.sourceName.toLowerCase().includes(query) || link.context.toLowerCase().includes(query)
     )
   }, [backlinks, searchQuery])
 
   const groupedBacklinks = useMemo(() => {
-    const groups: Record<string, LinkReference[]> = {}
-
-    for (const link of filteredBacklinks) {
+    return filteredBacklinks.reduce<Record<string, WikiLinkReference[]>>((groups, link) => {
       if (!groups[link.sourcePath]) groups[link.sourcePath] = []
       groups[link.sourcePath].push(link)
-    }
-
-    return groups
+      return groups
+    }, {})
   }, [filteredBacklinks])
 
   if (!currentFile) {
@@ -207,7 +118,7 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
         <Input
           placeholder={language === 'zh' ? '搜索文件名或上下文...' : 'Search file name or context...'}
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(event) => setSearchQuery(event.target.value)}
           className="h-8 bg-background text-sm"
         />
       </div>
@@ -250,17 +161,16 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
 
                     {isExpanded && (
                       <div className="ml-5 mt-1 space-y-1 border-l border-border pl-2">
-                        {links.map((link, idx) => (
+                        {links.map((link, index) => (
                           <button
-                            key={idx}
+                            key={`${link.sourcePath}-${link.line}-${index}`}
                             type="button"
                             className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent/40"
-                            onClick={() => {
-                              const file = findFileByName(link.sourceName)
-                              if (file) navigateToFile(file)
-                            }}
+                            onClick={() => navigateToPath(link.sourcePath)}
                           >
-                            <div className="text-muted-foreground">Line {link.line}</div>
+                            <div className="text-muted-foreground">
+                              {language === 'zh' ? `第 ${link.line} 行` : `Line ${link.line}`}
+                            </div>
                             <div className="mt-0.5 truncate text-foreground/80">
                               {link.context.substring(0, 70)}
                               {link.context.length > 70 && '...'}
@@ -289,19 +199,19 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
               </div>
             ) : (
               <div className="space-y-1">
-                {outgoingLinks.map((link, idx) => {
-                  const targetFile = findFileByName(link.targetName)
-                  const exists = !!targetFile
+                {outgoingLinks.map((link, index) => {
+                  const targetFile = resolveWikiLinkTarget(flatFiles, link.targetName, currentFile.path)
+                  const exists = Boolean(targetFile)
 
                   return (
                     <button
-                      key={idx}
+                      key={`${link.targetName}-${link.line}-${index}`}
                       type="button"
                       className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                         exists ? 'hover:bg-accent/60' : 'opacity-60'
                       }`}
                       onClick={() => {
-                        if (targetFile) navigateToFile(targetFile)
+                        if (targetFile) setCurrentFile(targetFile)
                       }}
                     >
                       <FileText
@@ -309,7 +219,10 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
                           exists ? 'text-blue-500' : 'text-muted-foreground'
                         }`}
                       />
-                      <span className="truncate">{link.targetName}</span>
+                      <span className="truncate">{link.alias || link.targetName}</span>
+                      {link.alias && (
+                        <span className="truncate text-[10px] text-muted-foreground">{link.targetName}</span>
+                      )}
                       {!exists && (
                         <span className="ml-auto text-xs text-muted-foreground">
                           {language === 'zh' ? '未找到' : 'Not found'}
@@ -325,7 +238,9 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
       </div>
 
       <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
-        {language === 'zh' ? '使用 [[文件名.md]] 创建链接' : 'Use [[filename.md]] to create links'}
+        {language === 'zh'
+          ? '支持 [[文件名]]、[[文件名.md]]、[[目录/文件名]] 和 [[文件名|别名]]'
+          : 'Supports [[note]], [[note.md]], [[folder/note]], and [[note|alias]]'}
       </div>
     </div>
   )
