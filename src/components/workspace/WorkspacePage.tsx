@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import dynamic from 'next/dynamic'
 import { PanelLeft, PanelRight } from 'lucide-react'
 import { TyporaEditor, TyporaEditorRef } from '@/components/editor/TyporaEditor'
@@ -25,10 +25,18 @@ const ExcalidrawEditor = dynamic(
   }
 )
 
+const subscribeHydration = () => () => undefined
+const getClientHydrationSnapshot = () => true
+const getServerHydrationSnapshot = () => false
+
 export default function WorkspacePage() {
   const editorRef = useRef<TyporaEditorRef>(null)
-  const [isMounted, setIsMounted] = useState(false)
   const [backlinksOpen, setBacklinksOpen] = useState(false)
+  const isHydrated = useSyncExternalStore(
+    subscribeHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot
+  )
 
   const content = useEditorStore(state => state.content)
   const currentFile = useEditorStore(state => state.currentFile)
@@ -42,8 +50,6 @@ export default function WorkspacePage() {
 
   useAppPreferences()
   const { openFolder } = useWorkspaceDirectory()
-
-  useEffect(() => setIsMounted(true), [])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,7 +66,7 @@ export default function WorkspacePage() {
 
   const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
 
-  if (!isMounted) {
+  if (!isHydrated) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
