@@ -1,10 +1,21 @@
 'use client'
 
 import React, { useEffect, useRef, useCallback } from 'react'
-import { useEditorStore } from '@/store/editor-store'
+import { useEditorStore, FileNode } from '@/store/editor-store'
 import { X, ChevronUp, ChevronDown, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+
+function findFileByPath(nodes: FileNode[], path: string): FileNode | null {
+  for (const node of nodes) {
+    if (node.type === 'file' && node.path === path) return node
+    if (node.children) {
+      const found = findFileByPath(node.children, path)
+      if (found) return found
+    }
+  }
+  return null
+}
 
 export function SearchDialog() {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -17,72 +28,68 @@ export function SearchDialog() {
     prevSearchResult,
     files,
     setCurrentFile,
-    setContent,
-    t
+    t,
   } = useEditorStore()
 
-  // Focus input when opened
+  const navigateToResult = useCallback((index: number) => {
+    const result = search.results[index]
+    if (!result) return
+    const file = findFileByPath(files, result.path)
+    if (file) setCurrentFile(file)
+  }, [files, search.results, setCurrentFile])
+
+  const handleNext = useCallback(() => {
+    if (search.results.length === 0) return
+    const nextIndex = (search.currentIndex + 1) % search.results.length
+    nextSearchResult()
+    navigateToResult(nextIndex)
+  }, [navigateToResult, nextSearchResult, search.currentIndex, search.results.length])
+
+  const handlePrevious = useCallback(() => {
+    if (search.results.length === 0) return
+    const previousIndex = search.currentIndex === 0
+      ? search.results.length - 1
+      : search.currentIndex - 1
+    prevSearchResult()
+    navigateToResult(previousIndex)
+  }, [navigateToResult, prevSearchResult, search.currentIndex, search.results.length])
+
   useEffect(() => {
     if (search.isOpen && inputRef.current) {
       inputRef.current.focus()
     }
   }, [search.isOpen])
 
-  // Handle keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && search.isOpen) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && search.isOpen) {
         closeSearch()
+        return
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault()
-        if (!search.isOpen) {
-          useEditorStore.getState().openSearch()
-        }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        if (!search.isOpen) useEditorStore.getState().openSearch()
+        return
       }
-      if (search.isOpen && e.key === 'Enter') {
-        e.preventDefault()
-        if (e.shiftKey) {
-          prevSearchResult()
-        } else {
-          nextSearchResult()
-        }
+
+      if (search.isOpen && event.key === 'Enter') {
+        event.preventDefault()
+        if (event.shiftKey) handlePrevious()
+        else handleNext()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [search.isOpen, closeSearch, nextSearchResult, prevSearchResult])
+  }, [closeSearch, handleNext, handlePrevious, search.isOpen])
 
-  // Search when query changes
+  // Always run the search function, including for an empty query, so clearing
+  // the input also clears stale results from the previous query.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (search.query) {
-        searchInFiles()
-      }
-    }, 300)
-    return () => clearTimeout(timer)
+    const timer = window.setTimeout(searchInFiles, 250)
+    return () => window.clearTimeout(timer)
   }, [search.query, searchInFiles])
-
-  // Navigate to result
-  const handleResultClick = useCallback((path: string) => {
-    const findFile = (nodes: typeof files): typeof files[0] | null => {
-      for (const node of nodes) {
-        if (node.path === path) return node
-        if (node.children) {
-          const found = findFile(node.children)
-          if (found) return found
-        }
-      }
-      return null
-    }
-    
-    const file = findFile(files)
-    if (file) {
-      setCurrentFile(file)
-      setContent(file.content || '')
-    }
-  }, [files, setCurrentFile, setContent])
 
   if (!search.isOpen) return null
 
@@ -94,22 +101,23 @@ export function SearchDialog() {
           <Input
             ref={inputRef}
             value={search.query}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(event) => setSearchQuery(event.target.value)}
             placeholder={t('searchPlaceholder')}
             className="border-none shadow-none focus-visible:ring-0 h-8"
           />
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground mr-2">
-              {search.results.length > 0 
-                ? `${search.currentIndex + 1}/${search.results.length}` 
+              {search.results.length > 0
+                ? `${search.currentIndex + 1}/${search.results.length}`
                 : t('noResults')}
             </span>
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={prevSearchResult}
+              onClick={handlePrevious}
               disabled={search.results.length === 0}
+              aria-label="Previous search result"
             >
               <ChevronUp className="w-3 h-3" />
             </Button>
@@ -117,8 +125,9 @@ export function SearchDialog() {
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={nextSearchResult}
+              onClick={handleNext}
               disabled={search.results.length === 0}
+              aria-label="Next search result"
             >
               <ChevronDown className="w-3 h-3" />
             </Button>
@@ -127,23 +136,24 @@ export function SearchDialog() {
               size="icon"
               className="h-6 w-6"
               onClick={closeSearch}
+              aria-label="Close search"
             >
               <X className="w-3 h-3" />
             </Button>
           </div>
         </div>
       </div>
-      
+
       {search.results.length > 0 && (
         <div className="max-h-64 overflow-y-auto">
           {search.results.map((result, index) => (
             <button
-              key={`${result.path}-${result.line}`}
+              key={`${result.path}-${result.line}-${index}`}
               className={`w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors ${
                 index === search.currentIndex ? 'bg-accent' : ''
               }`}
               onClick={() => {
-                handleResultClick(result.path)
+                navigateToResult(index)
                 closeSearch()
               }}
             >
@@ -163,16 +173,14 @@ export function SearchDialog() {
   )
 }
 
-// Highlight search match
 function highlightMatch(text: string, query: string): React.ReactNode {
   if (!query) return text
-  
+
   const lowerText = text.toLowerCase()
   const lowerQuery = query.toLowerCase()
   const index = lowerText.indexOf(lowerQuery)
-  
   if (index === -1) return text
-  
+
   return (
     <>
       {text.slice(0, index)}
