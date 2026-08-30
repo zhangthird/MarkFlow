@@ -194,6 +194,23 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       return remembered ?? contentBlocks.find(block => block.kind !== 'blank') ?? contentBlocks[0]
     }, [contentBlocks])
 
+    const wrapSelection = useCallback((textarea: HTMLTextAreaElement, before: string, after: string) => {
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const selected = textarea.value.slice(start, end)
+      const nextValue = textarea.value.slice(0, start) + before + selected + after + textarea.value.slice(end)
+      commitSourceValue(nextValue)
+      const nextStart = start + before.length
+      const nextEnd = nextStart + selected.length
+      requestAnimationFrame(() => {
+        const nextTextarea = sourceTextareaRef.current
+        if (!nextTextarea) return
+        nextTextarea.focus()
+        nextTextarea.setSelectionRange(nextStart, nextEnd)
+        resizeTextarea(nextTextarea)
+      })
+    }, [commitSourceValue])
+
     useImperativeHandle(ref, () => ({
       getTextarea: () => sourceTextareaRef.current,
       focus: () => {
@@ -207,19 +224,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       insertAtCursor: (before: string, after: string = '') => {
         const textarea = sourceTextareaRef.current
         if (editingRange && textarea) {
-          const start = textarea.selectionStart
-          const end = textarea.selectionEnd
-          const selected = textarea.value.slice(start, end)
-          const nextValue = textarea.value.slice(0, start) + before + selected + after + textarea.value.slice(end)
-          commitSourceValue(nextValue)
-          const cursor = start + before.length + selected.length
-          requestAnimationFrame(() => {
-            const nextTextarea = sourceTextareaRef.current
-            if (!nextTextarea) return
-            nextTextarea.focus()
-            nextTextarea.setSelectionRange(cursor, cursor)
-            resizeTextarea(nextTextarea)
-          })
+          wrapSelection(textarea, before, after)
           return
         }
 
@@ -229,7 +234,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         pendingSelectionRef.current = { start: block.content.length, end: block.content.length }
         activateBlock(block, block.content.length)
       },
-    }), [activateBlock, chooseFallbackBlock, commitSourceValue, editingRange])
+    }), [activateBlock, chooseFallbackBlock, editingRange, wrapSelection])
 
     const handleWikiLinkClick = useCallback((targetName: string) => {
       const targetFile = resolveWikiLinkTarget(
@@ -331,6 +336,26 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
 
       if (showSlashMenu && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)) return
 
+      const modifier = event.ctrlKey || event.metaKey
+      if (modifier && !event.altKey) {
+        const key = event.key.toLowerCase()
+        if (key === 'b') {
+          event.preventDefault()
+          wrapSelection(textarea, '**', '**')
+          return
+        }
+        if (key === 'i') {
+          event.preventDefault()
+          wrapSelection(textarea, '*', '*')
+          return
+        }
+        if (key === 'k') {
+          event.preventDefault()
+          wrapSelection(textarea, '[', '](https://)')
+          return
+        }
+      }
+
       if (event.key === 'Escape') {
         event.preventDefault()
         if (showSlashMenu) {
@@ -424,7 +449,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         nextTextarea.setSelectionRange(nextCursor, nextCursor)
         resizeTextarea(nextTextarea)
       })
-    }, [commitSourceValue, mergeWithPreviousBlock, moveToAdjacentBlock, showSlashMenu])
+    }, [commitSourceValue, mergeWithPreviousBlock, moveToAdjacentBlock, showSlashMenu, wrapSelection])
 
     const handleSlashSelect = useCallback((command: { insert: string }) => {
       const textarea = sourceTextareaRef.current
