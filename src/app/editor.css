@@ -1,0 +1,311 @@
+/* Typora-like writing surface and active-block source presentation. */
+
+.markflow-editor {
+  background: var(--background);
+}
+
+.markflow-document-shell {
+  width: min(100%, 980px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 3.5rem 4.5rem 10rem;
+}
+
+.markflow-document-shell-focus {
+  width: min(100%, 820px);
+  padding-top: 4.5rem;
+}
+
+.markflow-document.prose {
+  max-width: none;
+  font-size: 1rem;
+  line-height: 1.72;
+  letter-spacing: 0.002em;
+  color: var(--foreground);
+}
+
+.markflow-block {
+  position: relative;
+  min-height: 1.75rem;
+  margin-inline: -0.55rem;
+  padding-inline: 0.55rem;
+  border-radius: 0.35rem;
+  cursor: text;
+  transition: background-color 100ms ease;
+}
+
+.markflow-block:not(.markflow-block-active):hover {
+  background: color-mix(in oklab, var(--muted) 36%, transparent);
+}
+
+.markflow-block-active {
+  background: color-mix(in oklab, var(--muted) 22%, transparent);
+}
+
+.markflow-empty-block {
+  min-height: 1.7rem;
+}
+
+.markflow-source-editor {
+  display: block;
+  width: 100%;
+  min-height: 1.75rem;
+  overflow: hidden;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 0.08rem 0;
+  color: var(--foreground);
+  caret-color: var(--foreground);
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+}
+
+.markflow-block[data-kind='heading'] .markflow-source-editor {
+  padding-block: 0.18rem;
+  font-size: 1.55rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.markflow-block[data-kind='code'] .markflow-source-editor,
+.markflow-block[data-kind='math'] .markflow-source-editor,
+.markflow-block[data-kind='table'] .markflow-source-editor {
+  margin-block: 0.45rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  border-radius: 0.65rem;
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.markflow-document.prose h1,
+.markflow-document.prose h2,
+.markflow-document.prose h3,
+.markflow-document.prose h4,
+.markflow-document.prose h5,
+.markflow-document.prose h6 {
+  color: var(--foreground);
+  border: 0;
+  padding: 0;
+  letter-spacing: -0.018em;
+}
+
+.markflow-document.prose h1 {
+  margin: 1.55em 0 0.72em;
+  font-size: 2.15em;
+  font-weight: 700;
+  line-height: 1.23;
+}
+
+.markflow-document.prose h2 {
+  margin: 1.45em 0 0.62em;
+  font-size: 1.62em;
+  font-weight: 660;
+  line-height: 1.3;
+}
+
+.markflow-document.prose h3 {
+  margin: 1.3em 0 0.52em;
+  font-size: 1.3em;
+  font-weight: 650;
+  line-height: 1.38;
+}
+
+.markflow-document.prose h4,
+.markflow-document.prose h5,
+.markflow-document.prose h6 {
+  margin: 1.15em 0 0.45em;
+  font-weight: 650;
+}
+
+.markflow-document.prose p {
+  margin: 0.58em 0;
+  line-height: 1.72;
+}
+
+.markflow-document.prose strong {
+  font-weight: 650;
+}
+
+.markflow-document.prose ul,
+.markflow-document.prose ol {
+  margin: 0.55em 0;
+  padding-left: 1.65em;
+}
+
+.markflow-document.prose li {
+  margin: 0.16em 0;
+  line-height: 1.68;
+}
+
+.markflow-document.prose li > p {
+  margin: 0.18em 0;
+}
+
+.markflow-document.prose blockquote {
+  margin: 0.85em 0;
+  padding: 0.12em 0 0.12em 1.05em;
+  border-left: 3px solid color-mix(in oklab, var(--foreground) 24%, var(--border));
+  color: color-mix(in oklab, var(--foreground) 72%, var(--muted-foreground));
+  font-style: normal;
+}
+
+.markflow-document.prose blockquote p {
+  margin-block: 0.4em;
+}
+
+.markflow-inline-code,
+.markflow-document.prose code:not(pre code) {
+  border-radius: 0.28rem;
+  background: color-mix(in oklab, var(--muted) 72%, transparent);
+  padding: 0.14em 0.34em;
+  color: color-mix(in oklab, var(--foreground) 88%, var(--primary));
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.88em;
+}
+
+.markflow-code-block {
+  position: relative;
+  margin: 0.8rem 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 82%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in oklab, var(--muted) 54%, var(--background));
+}
+
+.markflow-code-language {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.75rem;
+  z-index: 1;
+  color: var(--muted-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  user-select: none;
+}
+
+.markflow-mermaid {
+  margin: 1rem 0;
+  overflow: auto;
+  border: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in oklab, var(--card) 92%, var(--muted));
+  padding: 1rem;
+}
+
+.markflow-table-wrap {
+  max-width: 100%;
+  margin: 0.85rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+}
+
+.markflow-document.prose .markflow-table-wrap table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+.markflow-document.prose .markflow-table-wrap th,
+.markflow-document.prose .markflow-table-wrap td {
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 0.78rem;
+  vertical-align: top;
+}
+
+.markflow-document.prose .markflow-table-wrap tr:last-child td {
+  border-bottom: 0;
+}
+
+.markflow-document.prose .markflow-table-wrap th:last-child,
+.markflow-document.prose .markflow-table-wrap td:last-child {
+  border-right: 0;
+}
+
+.markflow-document.prose .markflow-table-wrap th {
+  background: color-mix(in oklab, var(--muted) 62%, transparent);
+  font-weight: 620;
+}
+
+.markflow-task-checkbox {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0 0.4rem 0 0;
+  vertical-align: -0.12rem;
+  accent-color: var(--primary);
+}
+
+.markflow-wiki-link {
+  display: inline;
+  border: 0;
+  border-radius: 0.28rem;
+  background: color-mix(in oklab, var(--primary) 9%, transparent);
+  padding: 0.04em 0.28em;
+  color: color-mix(in oklab, var(--primary) 84%, var(--foreground));
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+
+.markflow-wiki-link:hover {
+  background: color-mix(in oklab, var(--primary) 16%, transparent);
+}
+
+.markflow-document.prose a {
+  color: color-mix(in oklab, var(--primary) 76%, #2563eb);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+}
+
+.markflow-image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  margin: 1rem auto;
+  border-radius: 0.55rem;
+  object-fit: contain;
+}
+
+.markflow-document .katex-display {
+  margin: 1.1rem 0;
+  padding: 0.45rem 0;
+}
+
+.markflow-document.prose hr {
+  margin: 1.8rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 900px) {
+  .markflow-document-shell,
+  .markflow-document-shell-focus {
+    width: 100%;
+    padding: 2.5rem 2.2rem 8rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .markflow-document-shell,
+  .markflow-document-shell-focus {
+    padding: 1.8rem 1.15rem 6rem;
+  }
+
+  .markflow-document.prose {
+    font-size: 0.97rem;
+  }
+}

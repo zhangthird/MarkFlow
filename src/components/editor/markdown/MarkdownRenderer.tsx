@@ -21,28 +21,20 @@ function wikiLinkPlugin() {
         for (const match of node.value.matchAll(WIKI_LINK_REGEX)) {
           const target = match[1]?.trim()
           if (!target) continue
-
           const start = match.index ?? 0
-          if (start > lastIndex) {
-            parts.push({ type: 'text', value: node.value.slice(lastIndex, start) })
-          }
+          if (start > lastIndex) parts.push({ type: 'text', value: node.value.slice(lastIndex, start) })
 
           parts.push({
             type: 'link',
             url: `wiki://${encodeURIComponent(target)}`,
-            children: [{
-              type: 'text',
-              value: match[2]?.trim() || target,
-            }],
+            children: [{ type: 'text', value: match[2]?.trim() || target }],
             data: { wikiLink: true },
           })
           lastIndex = start + match[0].length
         }
 
         if (parts.length > 0) {
-          if (lastIndex < node.value.length) {
-            parts.push({ type: 'text', value: node.value.slice(lastIndex) })
-          }
+          if (lastIndex < node.value.length) parts.push({ type: 'text', value: node.value.slice(lastIndex) })
           return parts
         }
       }
@@ -82,6 +74,7 @@ export function MarkdownRenderer({
       remarkPlugins={[remarkGfm, remarkMath, wikiLinkPlugin]}
       rehypePlugins={[rehypeKatex]}
       components={{
+        pre: ({ children }) => <>{children}</>,
         code: ({ className, children, ...props }) => {
           const languageMatch = /language-([\w-]+)/.exec(className || '')
           const language = languageMatch?.[1]
@@ -89,37 +82,39 @@ export function MarkdownRenderer({
           const isInline = !languageMatch && !codeString.includes('\n')
 
           if (language === 'mermaid') {
-            return <MermaidRenderer code={codeString} isDark={isDark} />
-          }
-
-          if (isInline) {
             return (
-              <code
-                className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDark ? 'text-primary' : 'bg-muted'}`}
-                {...props}
-              >
-                {children}
-              </code>
+              <div className="markflow-mermaid">
+                <MermaidRenderer code={codeString} isDark={isDark} />
+              </div>
             )
           }
 
+          if (isInline) {
+            return <code className="markflow-inline-code" {...props}>{children}</code>
+          }
+
           return (
-            <SyntaxHighlighter
-              style={isDark ? oneDark : oneLight}
-              language={language || 'text'}
-              PreTag="div"
-              className="rounded-lg"
-              customStyle={{
-                margin: 0,
-                padding: '0.75rem',
-                fontSize: '0.8rem',
-                border: 'none',
-                boxShadow: 'none',
-              }}
-              codeTagProps={{ style: { backgroundColor: 'transparent' } }}
-            >
-              {codeString}
-            </SyntaxHighlighter>
+            <div className="markflow-code-block">
+              {language && <div className="markflow-code-language">{language}</div>}
+              <SyntaxHighlighter
+                style={isDark ? oneDark : oneLight}
+                language={language || 'text'}
+                PreTag="div"
+                customStyle={{
+                  margin: 0,
+                  padding: language ? '2rem 1rem 1rem' : '1rem',
+                  fontSize: '0.875rem',
+                  lineHeight: 1.65,
+                  border: 'none',
+                  borderRadius: '0.65rem',
+                  boxShadow: 'none',
+                  background: 'transparent',
+                }}
+                codeTagProps={{ style: { backgroundColor: 'transparent', fontFamily: 'var(--font-geist-mono), monospace' } }}
+              >
+                {codeString}
+              </SyntaxHighlighter>
+            </div>
           )
         },
         a: ({ href, children, ...props }) => {
@@ -129,14 +124,14 @@ export function MarkdownRenderer({
             try {
               target = decodeURIComponent(encodedTarget)
             } catch {
-              // Keep the raw target if a manually authored value is malformed.
+              // Keep malformed manually-authored values navigable as raw text.
             }
 
             return (
               <button
                 type="button"
-                className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
-                onClick={(event) => {
+                className="markflow-wiki-link"
+                onClick={event => {
                   event.stopPropagation()
                   onWikiLinkClick?.(target)
                 }}
@@ -146,8 +141,27 @@ export function MarkdownRenderer({
             )
           }
 
-          return <a href={href} {...props}>{children}</a>
+          return (
+            <a href={href} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} {...props}>
+              {children}
+            </a>
+          )
         },
+        table: ({ children }) => (
+          <div className="markflow-table-wrap">
+            <table>{children}</table>
+          </div>
+        ),
+        input: ({ type, checked, ...props }) => (
+          <input
+            type={type}
+            checked={checked}
+            readOnly
+            tabIndex={-1}
+            className="markflow-task-checkbox"
+            {...props}
+          />
+        ),
         img: ({ src, alt }) => {
           const resolvedSrc = resolveImageSrc?.(typeof src === 'string' ? src : undefined) || src
           if (typeof resolvedSrc !== 'string' || !resolvedSrc) return null
@@ -156,7 +170,7 @@ export function MarkdownRenderer({
             <img
               src={resolvedSrc}
               alt={alt || 'image'}
-              className="my-3 max-h-[60vh] w-auto max-w-full rounded-lg border border-border/60 bg-background object-contain shadow-sm"
+              className="markflow-image"
               loading="lazy"
             />
           )
