@@ -1,0 +1,61 @@
+/* Second-pass Typora-like interaction polish. */
+
+.markflow-active-editor-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.markflow-live-preview {
+  position: relative;
+  margin: 0.1rem 0 0.65rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  opacity: 0.96;
+  cursor: default;
+}
+
+.markflow-live-preview-label {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.markflow-live-preview .markflow-code-block,
+.markflow-live-preview .markflow-mermaid,
+.markflow-live-preview .markflow-table-wrap,
+.markflow-live-preview .katex-display {
+  margin-top: 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.markflow-task-checkbox:not(:disabled) {
+  cursor: pointer;
+}
+
+.markflow-task-checkbox:not(:disabled):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.markflow-document.prose li.task-list-item {
+  list-style: none;
+}
+
+.markflow-document.prose ul.contains-task-list,
+.markflow-document.prose ol.contains-task-list {
+  padding-left: 0.35rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markflow-block,
+  .markflow-wiki-link {
+    transition: none;
+  }
+}
