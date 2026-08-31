@@ -352,6 +352,15 @@ Backlinks 由 Markdown source 推导，不单独持久化 graph database。
 
 ## 13. Workspace chrome / Focus / Theme / Language
 
+### Toolbar
+
+- Explorer、打开目录、保存、Undo / Redo 保持为左侧直接操作。
+- Markdown / text 文件中，Bold、Italic、标题、无序列表和链接保留为高频直接格式化操作。
+- inline code / math、ordered list、quote、code block、math block、image、table 和 horizontal rule 收拢到一个 More 菜单，减少窄窗口工具栏拥挤。
+- Search、Theme、Focus 保留为右侧直接操作；语言切换与 PDF 导出进入应用菜单。
+- 当前文件名只在工具栏空间足够时显示，并继续显示 dirty 状态。
+- Toolbar 共用单个 TooltipProvider，并通过复用 action component 减少重复 UI 代码；原有快捷键和 editor insertion 行为保持不变。
+
 ### Explorer / Link Inspector
 
 - 左侧 Explorer 使用紧凑文件树，显示 workspace 名称、文件数量、目录数量和 dirty 数量。
