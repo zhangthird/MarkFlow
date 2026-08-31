@@ -1,37 +1,39 @@
 'use client'
 
-import React, { useCallback } from 'react'
-import { useEditorStore } from '@/store/editor-store'
-import { TyporaEditorRef } from '@/components/editor/TyporaEditor'
-import { 
-  PanelLeftClose, 
-  PanelLeft,
-  FolderOpen,
-  Printer,
-  Maximize2,
-  Minimize2,
+import React, { useCallback, type ReactNode } from 'react'
+import {
   Bold,
-  Italic,
   Code,
+  FileCode,
+  FolderOpen,
+  Heading1,
+  Image as ImageIcon,
+  Italic,
+  Languages,
+  Link,
   List,
   ListOrdered,
-  Quote,
-  Heading1,
-  Link,
-  ImageIcon,
-  Table,
+  Maximize2,
+  Minimize2,
   Minus,
-  Sun,
   Moon,
-  Search,
-  Save,
-  Languages,
-  Undo2,
+  MoreHorizontal,
+  PanelLeft,
+  PanelLeftClose,
+  Printer,
+  Quote,
   Redo2,
+  Save,
+  Search,
   Sigma,
-  FileCode,
-  Variable
+  Sun,
+  Table,
+  Undo2,
+  Variable,
 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useEditorStore } from '@/store/editor-store'
+import { TyporaEditorRef } from '@/components/editor/TyporaEditor'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -39,7 +41,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { toast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,10 +53,44 @@ interface ToolbarProps {
   editorRef: React.RefObject<TyporaEditorRef | null>
 }
 
+interface ToolbarActionProps {
+  label: string
+  onClick: () => void
+  children: ReactNode
+  disabled?: boolean
+  id?: string
+}
+
+function ToolbarAction({ label, onClick, children, disabled, id }: ToolbarActionProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 rounded-md"
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function ToolbarDivider() {
+  return <div className="mx-1.5 h-5 w-px shrink-0 bg-border/80" aria-hidden="true" />
+}
+
 export function Toolbar({ onOpenFolder, editorRef }: ToolbarProps) {
-  const { 
-    sidebarOpen, 
-    toggleSidebar, 
+  const {
+    sidebarOpen,
+    toggleSidebar,
     focusMode,
     toggleFocusMode,
     content,
@@ -70,8 +105,10 @@ export function Toolbar({ onOpenFolder, editorRef }: ToolbarProps) {
     redo,
     canUndo,
     canRedo,
-    t
+    t,
   } = useEditorStore()
+
+  const isTextLikeFile = currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text'
 
   const handleExportPDF = useCallback(async () => {
     const printWindow = window.open('', '_blank')
@@ -142,498 +179,212 @@ export function Toolbar({ onOpenFolder, editorRef }: ToolbarProps) {
   }, [content, currentFile])
 
   const insertText = useCallback((before: string, after: string = '') => {
-    if (editorRef.current) {
-      editorRef.current.insertAtCursor(before, after)
-    }
+    editorRef.current?.insertAtCursor(before, after)
   }, [editorRef])
 
   const handleSave = useCallback(async () => {
     const success = await saveCurrentFile()
-    if (success) {
-      toast.success(t('fileSaved'))
-    } else {
-      toast.error(t('saveFailed'))
-    }
+    if (success) toast.success(t('fileSaved'))
+    else toast.error(t('saveFailed'))
   }, [saveCurrentFile, t])
 
-  // Keyboard shortcuts
   React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        handleSave()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault()
+        void handleSave()
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault()
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
         openSearch()
       }
-      // Undo: Ctrl/Cmd + Z
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault()
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+        event.preventDefault()
         undo()
       }
-      // Redo: Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault()
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+        event.preventDefault()
         redo()
       }
     }
+
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleSave, openSearch, undo, redo])
+  }, [handleSave, openSearch, redo, undo])
 
   const ThemeIcon = theme === 'dark' ? Sun : Moon
 
   return (
-    <header className="h-12 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center px-3 gap-1 shrink-0">
-      {/* Left section */}
-      <div className="flex items-center gap-1">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={toggleSidebar}
-              >
-                {sidebarOpen ? (
-                  <PanelLeftClose className="h-4 w-4" />
-                ) : (
-                  <PanelLeft className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {sidebarOpen ? t('hideSidebar') : t('showSidebar')}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+    <TooltipProvider delayDuration={350}>
+      <header className="flex h-12 shrink-0 items-center gap-0.5 overflow-hidden border-b border-border bg-background/95 px-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ToolbarAction
+            label={sidebarOpen ? t('hideSidebar') : t('showSidebar')}
+            onClick={toggleSidebar}
+          >
+            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+          </ToolbarAction>
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={onOpenFolder}
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('openFolder')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+          <ToolbarAction label={t('openFolder')} onClick={onOpenFolder}>
+            <FolderOpen className="h-4 w-4" />
+          </ToolbarAction>
 
-        {/* Save button */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                id="save-btn"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleSave}
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('saveShortcut')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+          <ToolbarAction id="save-btn" label={t('saveShortcut')} onClick={() => void handleSave()}>
+            <Save className="h-4 w-4" />
+          </ToolbarAction>
 
-        {/* Undo button */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={undo}
-                disabled={!canUndo()}
-              >
-                <Undo2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('undo')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+          <ToolbarAction label={t('undo')} onClick={undo} disabled={!canUndo()}>
+            <Undo2 className="h-4 w-4" />
+          </ToolbarAction>
 
-        {/* Redo button */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={redo}
-                disabled={!canRedo()}
-              >
-                <Redo2 className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('redo')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+          <ToolbarAction label={t('redo')} onClick={redo} disabled={!canRedo()}>
+            <Redo2 className="h-4 w-4" />
+          </ToolbarAction>
+        </div>
 
-      {/* Divider */}
-      <div className="w-px h-5 bg-border mx-2" />
+        {isTextLikeFile && (
+          <>
+            <ToolbarDivider />
+            <div className="flex min-w-0 shrink-0 items-center gap-0.5">
+              <ToolbarAction label={t('bold')} onClick={() => insertText('**', '**')}>
+                <Bold className="h-4 w-4" />
+              </ToolbarAction>
 
-      {/* Format tools - only show for markdown files */}
-      {(currentFile?.fileType === 'markdown' || currentFile?.fileType === 'text') && (
-        <>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('**', '**')}
-                >
-                  <Bold className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('bold')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              <ToolbarAction label={t('italic')} onClick={() => insertText('*', '*')}>
+                <Italic className="h-4 w-4" />
+              </ToolbarAction>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('*', '*')}
-                >
-                  <Italic className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('italic')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 rounded-md"
+                    title={t('heading1')}
+                    aria-label={language === 'zh' ? '标题级别' : 'Heading level'}
+                  >
+                    <Heading1 className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-40">
+                  <DropdownMenuItem onClick={() => insertText('# ')}>{t('heading1')}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('## ')}>{t('heading2')}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('### ')}>{t('heading3')}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('`', '`')}
-                >
-                  <Code className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('code')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              <ToolbarAction label={t('bulletList')} onClick={() => insertText('- ')}>
+                <List className="h-4 w-4" />
+              </ToolbarAction>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('$', '$')}
-                >
-                  <Variable className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('math')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              <ToolbarAction label={t('link')} onClick={() => insertText('[', '](url)')}>
+                <Link className="h-4 w-4" />
+              </ToolbarAction>
 
-          {/* Headings dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 rounded-md"
+                    title={language === 'zh' ? '更多格式与插入' : 'More formatting and insert tools'}
+                    aria-label={language === 'zh' ? '更多格式与插入' : 'More formatting and insert tools'}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem onClick={() => insertText('`', '`')}>
+                    <Code className="mr-2 h-4 w-4" />{t('code')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('$', '$')}>
+                    <Variable className="mr-2 h-4 w-4" />{t('math')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('1. ')}>
+                    <ListOrdered className="mr-2 h-4 w-4" />{t('orderedList')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('> ')}>
+                    <Quote className="mr-2 h-4 w-4" />{t('quote')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('\n```\ncode here\n```\n')}>
+                    <FileCode className="mr-2 h-4 w-4" />{t('codeBlock')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('\n$$\nE = mc^2\n$$\n')}>
+                    <Sigma className="mr-2 h-4 w-4" />{t('mathBlock')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('![alt](', ')')}>
+                    <ImageIcon className="mr-2 h-4 w-4" />{t('image')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('\n| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |\n')}>
+                    <Table className="mr-2 h-4 w-4" />{t('table')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => insertText('\n---\n')}>
+                    <Minus className="mr-2 h-4 w-4" />{t('horizontalRule')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        )}
+
+        <div className="min-w-0 flex-1 px-2">
+          {currentFile && (
+            <div
+              className="mx-auto hidden max-w-[260px] items-center justify-center gap-1.5 truncate text-xs text-muted-foreground lg:flex"
+              title={currentFile.path}
+            >
+              {currentFile.isModified && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />}
+              <span className="truncate">{currentFile.name}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5">
+          <ToolbarAction label={t('searchShortcut')} onClick={openSearch}>
+            <Search className="h-4 w-4" />
+          </ToolbarAction>
+
+          <ToolbarAction
+            label={theme === 'dark' ? t('switchToLight') : t('switchToDark')}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
+            <ThemeIcon className="h-4 w-4" />
+          </ToolbarAction>
+
+          <ToolbarAction
+            label={focusMode ? t('exitFocusMode') : t('focusMode')}
+            onClick={toggleFocusMode}
+          >
+            {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </ToolbarAction>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Heading1 className="h-4 w-4" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-md"
+                title={language === 'zh' ? '应用菜单' : 'Application menu'}
+                aria-label={language === 'zh' ? '应用菜单' : 'Application menu'}
+              >
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => insertText('# ')}>
-                {t('heading1')}
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}>
+                <Languages className="mr-2 h-4 w-4" />
+                {language === 'zh' ? 'Switch to English' : '切换到中文'}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => insertText('## ')}>
-                {t('heading2')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => insertText('### ')}>
-                {t('heading3')}
+              <DropdownMenuItem onClick={() => void handleExportPDF()} disabled={!isTextLikeFile}>
+                <Printer className="mr-2 h-4 w-4" />{t('exportPDF')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* List tools */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('- ')}
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('bulletList')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('1. ')}
-                >
-                  <ListOrdered className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('orderedList')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('> ')}
-                >
-                  <Quote className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('quote')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Divider */}
-          <div className="w-px h-5 bg-border mx-2" />
-
-          {/* Code & Math */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('\n```\ncode here\n```\n')}
-                >
-                  <FileCode className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('codeBlock')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('\n$$\nE = mc^2\n$$\n')}
-                >
-                  <Sigma className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('mathBlock')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Divider */}
-          <div className="w-px h-5 bg-border mx-2" />
-
-          {/* Insert tools */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('[', '](url)')}
-                >
-                  <Link className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('link')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('![alt](', ')')}
-                >
-                  <ImageIcon className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('image')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('\n| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |\n')}
-                >
-                  <Table className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('table')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => insertText('\n---\n')}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('horizontalRule')}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </>
-      )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* File name with modification indicator */}
-      {currentFile && (
-        <span className="text-sm text-muted-foreground mr-2 hidden sm:inline flex items-center gap-1">
-          {currentFile.isModified && <span className="w-2 h-2 bg-orange-500 rounded-full" />}
-          {currentFile.name}
-        </span>
-      )}
-
-      {/* Right section */}
-      <div className="flex items-center gap-1">
-        {/* Language toggle */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
-              >
-                <Languages className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {language === 'zh' ? 'Switch to English' : '切换到中文'}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Search button */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={openSearch}
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('searchShortcut')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Theme toggle */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              >
-                <ThemeIcon className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {theme === 'dark' ? t('switchToLight') : t('switchToDark')}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Focus mode */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={toggleFocusMode}
-              >
-                {focusMode ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {focusMode ? t('exitFocusMode') : t('focusMode')}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* PDF export */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleExportPDF}
-              >
-                <Printer className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t('exportPDF')}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-    </header>
+        </div>
+      </header>
+    </TooltipProvider>
   )
 }
