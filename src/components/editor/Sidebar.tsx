@@ -282,6 +282,7 @@ export function Sidebar() {
   const files = useEditorStore(state => state.files)
   const sidebarOpen = useEditorStore(state => state.sidebarOpen)
   const sidebarWidth = useEditorStore(state => state.sidebarWidth)
+  const setSidebarWidth = useEditorStore(state => state.setSidebarWidth)
   const rootFolderName = useEditorStore(state => state.rootFolderName)
   const t = useEditorStore(state => state.t)
   const language = useEditorStore(state => state.language)
@@ -320,12 +321,34 @@ export function Sidebar() {
     if (name) await createEntryWithFeedback('/', name, 'folder', language)
   }
 
+  const handleResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = sidebarWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      setSidebarWidth(Math.min(420, Math.max(200, startWidth + moveEvent.clientX - startX)))
+    }
+
+    const handleUp = () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+
   if (!sidebarOpen) return null
 
   return (
     <>
       <aside
-        className="flex h-full shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar/95"
+        className="relative flex h-full shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar/95"
         style={{ width: sidebarWidth }}
       >
         <div className="border-b border-sidebar-border/70 px-3 pb-2.5 pt-3">
@@ -385,6 +408,15 @@ export function Sidebar() {
             </span>
           )}
         </div>
+
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={language === 'zh' ? '调整左侧栏宽度' : 'Resize left sidebar'}
+          className="absolute inset-y-0 right-[-2px] z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/20 active:bg-primary/30"
+          onPointerDown={handleResizeStart}
+          onDoubleClick={() => setSidebarWidth(260)}
+        />
       </aside>
 
       <Dialog open={showNewFileDialog} onOpenChange={setShowNewFileDialog}>
