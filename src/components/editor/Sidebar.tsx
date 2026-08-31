@@ -10,7 +10,6 @@ import {
   Folder,
   FolderOpen,
   Image as ImageIcon,
-  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
