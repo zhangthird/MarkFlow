@@ -357,9 +357,12 @@ Backlinks 由 Markdown source 推导，不单独持久化 graph database。
 - 左侧 Explorer 使用紧凑文件树，显示 workspace 名称、文件数量、目录数量和 dirty 数量。
 - 当前文件使用低对比选中底色和左侧窄指示条，减少大面积高亮对写作区域的干扰。
 - 左侧栏支持 200–420px 拖拽调整宽度，双击分隔线恢复 260px。
+- Explorer 的显示/隐藏状态与宽度会保存在浏览器偏好中；Toolbar、Quick Open 和其他 store caller 产生的状态变化都会统一持久化。
+- 左侧栏由 Toolbar 作为唯一显示/隐藏入口，不再在编辑区重复提供悬浮打开按钮。
 - 右侧 Link Inspector 将 backlinks 与 outgoing Wiki Links 组织为连续 inspector 分区，并显示当前文件路径、引用上下文和缺失目标状态。
 - 右侧栏支持 260–420px 拖拽调整宽度，双击分隔线恢复 304px。
-- 关闭左右栏后，使用编辑区边缘的轻量悬浮按钮重新打开，而不是固定的窗口边缘 tab。
+- Link Inspector 的开关和宽度同样会跨刷新恢复；右侧关闭后仍保留编辑区边缘的轻量打开按钮。
+- 调整右栏宽度时会结合当前 Explorer 宽度，为中央编辑区预留最小空间，降低窄窗口下正文被双侧栏挤压的情况。
 
 ### Focus / Theme / Language
 
@@ -401,7 +404,8 @@ CI 使用 Node 24 自带 `node:test`，无需额外测试框架依赖。
 - duplicate-name same-directory resolution；
 - rename rewrite 只修改真正解析到目标 note 的链接；
 - workspace path helpers；
-- filename validation。
+- filename validation；
+- panel preference width clamping 与持久化值解析。
 
 标准 CI：
 
