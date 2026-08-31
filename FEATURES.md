@@ -350,7 +350,18 @@ Backlinks 由 Markdown source 推导，不单独持久化 graph database。
 - workspace tree integration；
 - Excalidraw 内置图片导出。
 
-## 13. Focus / Theme / Language
+## 13. Workspace chrome / Focus / Theme / Language
+
+### Explorer / Link Inspector
+
+- 左侧 Explorer 使用紧凑文件树，显示 workspace 名称、文件数量、目录数量和 dirty 数量。
+- 当前文件使用低对比选中底色和左侧窄指示条，减少大面积高亮对写作区域的干扰。
+- 左侧栏支持 200–420px 拖拽调整宽度，双击分隔线恢复 260px。
+- 右侧 Link Inspector 将 backlinks 与 outgoing Wiki Links 组织为连续 inspector 分区，并显示当前文件路径、引用上下文和缺失目标状态。
+- 右侧栏支持 260–420px 拖拽调整宽度，双击分隔线恢复 304px。
+- 关闭左右栏后，使用编辑区边缘的轻量悬浮按钮重新打开，而不是固定的窗口边缘 tab。
+
+### Focus / Theme / Language
 
 - Focus Mode 隐藏主要 chrome，Esc 退出。
 - Light / Dark preference 持久化。

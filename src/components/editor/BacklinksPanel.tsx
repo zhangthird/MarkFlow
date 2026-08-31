@@ -1,6 +1,15 @@
 'use client'
 
 import React, { useEffect, useMemo, useState } from 'react'
+import {
+  ChevronDown,
+  ChevronRight,
+  FileQuestion,
+  FileText,
+  Link,
+  Search,
+  X,
+} from 'lucide-react'
 import { useEditorStore } from '@/store/editor-store'
 import {
   collectWorkspaceFiles,
@@ -8,7 +17,6 @@ import {
   resolveWikiLinkTarget,
   WikiLinkReference,
 } from '@/lib/wiki-links'
-import { Link, FileText, ChevronRight, ChevronDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -17,7 +25,10 @@ interface BacklinksPanelProps {
 }
 
 export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
-  const { files, currentFile, setCurrentFile, language } = useEditorStore()
+  const files = useEditorStore(state => state.files)
+  const currentFile = useEditorStore(state => state.currentFile)
+  const setCurrentFile = useEditorStore(state => state.setCurrentFile)
+  const language = useEditorStore(state => state.language)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
 
@@ -85,95 +96,137 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
     }, {})
   }, [filteredBacklinks])
 
+  const unresolvedOutgoing = useMemo(() => {
+    if (!currentFile) return 0
+    return outgoingLinks.reduce((count, link) => {
+      const target = resolveWikiLinkTarget(flatFiles, link.targetName, currentFile.path)
+      return count + (target ? 0 : 1)
+    }, 0)
+  }, [currentFile, flatFiles, outgoingLinks])
+
   if (!currentFile) {
     return (
-      <div className="p-4 text-center text-muted-foreground text-sm">
-        {language === 'zh' ? '请先选择一个文件' : 'Select a file first'}
+      <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
+        <Link className="mb-2 h-7 w-7 opacity-25" />
+        <p className="text-sm">{language === 'zh' ? '请先选择一个文件' : 'Select a file first'}</p>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
-      <div className="border-b border-border p-3">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-            <Link className="h-4 w-4 text-primary" />
-            {language === 'zh' ? '双向链接' : 'Backlinks'}
-          </h3>
+    <aside className="flex h-full flex-col bg-sidebar/95 text-sidebar-foreground">
+      <div className="border-b border-sidebar-border/70 px-3 pb-3 pt-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2">
+              <Link className="h-3.5 w-3.5 shrink-0 text-primary/80" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                {language === 'zh' ? '链接检查器' : 'Link Inspector'}
+              </span>
+            </div>
+            <div className="truncate text-[13px] font-semibold" title={currentFile.name}>{currentFile.name}</div>
+            <div className="mt-0.5 truncate text-[10px] text-muted-foreground/65" title={currentFile.path}>{currentFile.path}</div>
+          </div>
           {onClose && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              className="h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
               onClick={onClose}
-              title={language === 'zh' ? '关闭双向链接面板' : 'Close backlinks panel'}
-              aria-label={language === 'zh' ? '关闭双向链接面板' : 'Close backlinks panel'}
+              title={language === 'zh' ? '关闭链接检查器' : 'Close link inspector'}
+              aria-label={language === 'zh' ? '关闭链接检查器' : 'Close link inspector'}
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>
 
-        <Input
-          placeholder={language === 'zh' ? '搜索文件名或上下文...' : 'Search file name or context...'}
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          className="h-8 bg-background text-sm"
-        />
+        <div className="relative mt-3">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+          <Input
+            placeholder={language === 'zh' ? '搜索反向链接...' : 'Search backlinks...'}
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            className="h-7 rounded-md border-sidebar-border/70 bg-background/50 pl-8 pr-7 text-xs shadow-none focus-visible:ring-1"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              aria-label={language === 'zh' ? '清空搜索' : 'Clear search'}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="sidebar-scrollbar flex-1 space-y-3 overflow-y-auto p-3">
-        <section className="rounded-md border border-border/70 bg-background/70">
-          <div className="flex items-center justify-between border-b border-border/70 px-3 py-2 text-xs text-muted-foreground">
-            <span>{language === 'zh' ? '引用此文件' : 'References to this file'}</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 font-medium">{backlinks.length}</span>
+      <div className="sidebar-scrollbar flex-1 overflow-y-auto">
+        <section className="border-b border-sidebar-border/60">
+          <div className="sticky top-0 z-10 flex h-8 items-center justify-between bg-sidebar/95 px-3 backdrop-blur-sm">
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {language === 'zh' ? '反向链接' : 'Backlinks'}
+            </span>
+            <span className="min-w-5 rounded-full bg-sidebar-accent px-1.5 py-0.5 text-center text-[10px] tabular-nums text-muted-foreground">
+              {backlinks.length}
+            </span>
           </div>
 
-          <div className="p-2">
+          <div className="px-1.5 pb-2">
             {Object.keys(groupedBacklinks).length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                {language === 'zh' ? '暂无反向链接' : 'No backlinks found'}
+              <div className="flex flex-col items-center justify-center px-4 py-8 text-center text-muted-foreground/70">
+                <Link className="mb-2 h-6 w-6 opacity-25" />
+                <p className="text-xs">
+                  {searchQuery
+                    ? (language === 'zh' ? '没有匹配的反向链接' : 'No matching backlinks')
+                    : (language === 'zh' ? '还没有其他笔记引用此文件' : 'No notes reference this file yet')}
+                </p>
               </div>
             ) : (
               Object.entries(groupedBacklinks).map(([path, links]) => {
                 const isExpanded = expandedFiles.has(path)
                 const firstLink = links[0]
+                const shortPath = firstLink.sourcePath === firstLink.sourceName
+                  ? ''
+                  : firstLink.sourcePath.replace(new RegExp(`/?${firstLink.sourceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '')
 
                 return (
-                  <div key={path} className="mb-1 last:mb-0">
+                  <div key={path} className="mb-0.5 last:mb-0">
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent/60"
+                      className="group flex w-full items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-sidebar-accent/50"
                       onClick={() => toggleExpanded(path)}
                     >
                       {isExpanded ? (
-                        <ChevronDown className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                       ) : (
-                        <ChevronRight className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
                       )}
-                      <FileText className="h-4 w-4 flex-shrink-0 text-blue-500" />
-                      <span className="truncate">{firstLink.sourceName}</span>
-                      <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-sky-500/85" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12px] font-medium">{firstLink.sourceName}</div>
+                        {shortPath && <div className="truncate text-[9px] text-muted-foreground/55">{shortPath}</div>}
+                      </div>
+                      <span className="rounded bg-sidebar-accent/70 px-1.5 py-0.5 text-[9px] tabular-nums text-muted-foreground">
                         {links.length}
                       </span>
                     </button>
 
                     {isExpanded && (
-                      <div className="ml-5 mt-1 space-y-1 border-l border-border pl-2">
+                      <div className="ml-5 border-l border-sidebar-border/70 pl-2 pr-1">
                         {links.map((link, index) => (
                           <button
                             key={`${link.sourcePath}-${link.line}-${index}`}
                             type="button"
-                            className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent/40"
+                            className="group block w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/40"
                             onClick={() => navigateToPath(link.sourcePath)}
                           >
-                            <div className="text-muted-foreground">
+                            <div className="text-[9px] font-medium tabular-nums text-muted-foreground/60">
                               {language === 'zh' ? `第 ${link.line} 行` : `Line ${link.line}`}
                             </div>
-                            <div className="mt-0.5 truncate text-foreground/80">
-                              {link.context.substring(0, 70)}
-                              {link.context.length > 70 && '...'}
+                            <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-sidebar-foreground/75 group-hover:text-sidebar-foreground">
+                              {link.context}
                             </div>
                           </button>
                         ))}
@@ -186,19 +239,24 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
           </div>
         </section>
 
-        <section className="rounded-md border border-border/70 bg-background/70">
-          <div className="flex items-center justify-between border-b border-border/70 px-3 py-2 text-xs text-muted-foreground">
-            <span>{language === 'zh' ? '此文件引用' : 'Links from this file'}</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 font-medium">{outgoingLinks.length}</span>
+        <section>
+          <div className="sticky top-0 z-10 flex h-8 items-center justify-between bg-sidebar/95 px-3 backdrop-blur-sm">
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {language === 'zh' ? '出站链接' : 'Outgoing links'}
+            </span>
+            <span className="min-w-5 rounded-full bg-sidebar-accent px-1.5 py-0.5 text-center text-[10px] tabular-nums text-muted-foreground">
+              {outgoingLinks.length}
+            </span>
           </div>
 
-          <div className="p-2">
+          <div className="px-1.5 pb-2">
             {outgoingLinks.length === 0 ? (
-              <div className="py-4 text-center text-sm text-muted-foreground">
-                {language === 'zh' ? '无外链' : 'No outgoing links'}
+              <div className="flex flex-col items-center justify-center px-4 py-7 text-center text-muted-foreground/70">
+                <FileText className="mb-2 h-6 w-6 opacity-20" />
+                <p className="text-xs">{language === 'zh' ? '此文件还没有 Wiki Link' : 'This file has no Wiki Links yet'}</p>
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {outgoingLinks.map((link, index) => {
                   const targetFile = resolveWikiLinkTarget(flatFiles, link.targetName, currentFile.path)
                   const exists = Boolean(targetFile)
@@ -207,25 +265,27 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
                     <button
                       key={`${link.targetName}-${link.line}-${index}`}
                       type="button"
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
-                        exists ? 'hover:bg-accent/60' : 'opacity-60'
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                        exists ? 'hover:bg-sidebar-accent/50' : 'cursor-default opacity-60'
                       }`}
                       onClick={() => {
                         if (targetFile) setCurrentFile(targetFile)
                       }}
                     >
-                      <FileText
-                        className={`h-4 w-4 flex-shrink-0 ${
-                          exists ? 'text-blue-500' : 'text-muted-foreground'
-                        }`}
-                      />
-                      <span className="truncate">{link.alias || link.targetName}</span>
-                      {link.alias && (
-                        <span className="truncate text-[10px] text-muted-foreground">{link.targetName}</span>
+                      {exists ? (
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-sky-500/85" />
+                      ) : (
+                        <FileQuestion className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       )}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12px] font-medium">{link.alias || link.targetName}</div>
+                        <div className="truncate text-[9px] text-muted-foreground/60">
+                          {link.alias ? link.targetName : (targetFile?.path || link.targetName)}
+                        </div>
+                      </div>
                       {!exists && (
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {language === 'zh' ? '未找到' : 'Not found'}
+                        <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[9px] text-destructive/80">
+                          {language === 'zh' ? '缺失' : 'Missing'}
                         </span>
                       )}
                     </button>
@@ -237,11 +297,14 @@ export function BacklinksPanel({ onClose }: BacklinksPanelProps) {
         </section>
       </div>
 
-      <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
-        {language === 'zh'
-          ? '支持 [[文件名]]、[[文件名.md]]、[[目录/文件名]] 和 [[文件名|别名]]'
-          : 'Supports [[note]], [[note.md]], [[folder/note]], and [[note|alias]]'}
+      <div className="flex h-7 shrink-0 items-center justify-between border-t border-sidebar-border/60 px-3 text-[10px] text-muted-foreground/65">
+        <span>{backlinks.length} {language === 'zh' ? '反向引用' : 'backlinks'}</span>
+        <span className={unresolvedOutgoing > 0 ? 'text-destructive/80' : ''}>
+          {unresolvedOutgoing > 0
+            ? `${unresolvedOutgoing} ${language === 'zh' ? '个缺失目标' : 'missing'}`
+            : (language === 'zh' ? '链接已解析' : 'Links resolved')}
+        </span>
       </div>
-    </div>
+    </aside>
   )
 }
