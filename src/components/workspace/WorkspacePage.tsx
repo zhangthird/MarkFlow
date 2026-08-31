@@ -8,10 +8,20 @@ import { Sidebar } from '@/components/editor/Sidebar'
 import { Toolbar } from '@/components/editor/Toolbar'
 import { SearchDialog } from '@/components/editor/SearchDialog'
 import { BacklinksPanel } from '@/components/editor/BacklinksPanel'
+import { PanelPreferenceRuntime } from '@/components/workspace/PanelPreferenceRuntime'
 import { Button } from '@/components/ui/button'
 import { useEditorStore } from '@/store/editor-store'
 import { useAppPreferences } from '@/hooks/useAppPreferences'
 import { useWorkspaceDirectory } from '@/hooks/useWorkspaceDirectory'
+import {
+  DEFAULT_BACKLINKS_WIDTH,
+  MAX_BACKLINKS_WIDTH,
+  MIN_BACKLINKS_WIDTH,
+  PANEL_PREFERENCE_KEYS,
+  clampPanelWidth,
+  parseStoredBoolean,
+  parseStoredPanelWidth,
+} from '@/lib/panel-preferences'
 
 const ExcalidrawEditor = dynamic(
   () => import('@/components/editor/ExcalidrawEditor').then(module => ({ default: module.ExcalidrawEditor })),
@@ -46,10 +56,25 @@ function restoreScrollProgress(selector: string, progress: number) {
   })
 }
 
+function initialBacklinksOpen() {
+  if (typeof window === 'undefined') return false
+  return parseStoredBoolean(localStorage.getItem(PANEL_PREFERENCE_KEYS.backlinksOpen), false)
+}
+
+function initialBacklinksWidth() {
+  if (typeof window === 'undefined') return DEFAULT_BACKLINKS_WIDTH
+  return parseStoredPanelWidth(
+    localStorage.getItem(PANEL_PREFERENCE_KEYS.backlinksWidth),
+    MIN_BACKLINKS_WIDTH,
+    MAX_BACKLINKS_WIDTH,
+    DEFAULT_BACKLINKS_WIDTH
+  )
+}
+
 export default function WorkspacePage() {
   const editorRef = useRef<TyporaEditorRef>(null)
-  const [backlinksOpen, setBacklinksOpen] = useState(false)
-  const [backlinksWidth, setBacklinksWidth] = useState(304)
+  const [backlinksOpen, setBacklinksOpen] = useState(initialBacklinksOpen)
+  const [backlinksWidth, setBacklinksWidth] = useState(initialBacklinksWidth)
   const [sourceMode, setSourceMode] = useState(false)
   const isHydrated = useSyncExternalStore(
     subscribeHydration,
@@ -60,6 +85,7 @@ export default function WorkspacePage() {
   const content = useEditorStore(state => state.content)
   const currentFile = useEditorStore(state => state.currentFile)
   const sidebarOpen = useEditorStore(state => state.sidebarOpen)
+  const sidebarWidth = useEditorStore(state => state.sidebarWidth)
   const updateCurrentFileContent = useEditorStore(state => state.updateCurrentFileContent)
   const focusMode = useEditorStore(state => state.focusMode)
   const toggleFocusMode = useEditorStore(state => state.toggleFocusMode)
@@ -102,14 +128,32 @@ export default function WorkspacePage() {
     updateCurrentFileContent(nextContent)
   }, [updateCurrentFileContent])
 
+  const setBacklinksOpenWithPreference = useCallback((open: boolean) => {
+    setBacklinksOpen(open)
+    localStorage.setItem(PANEL_PREFERENCE_KEYS.backlinksOpen, String(open))
+  }, [])
+
+  const maxBacklinksWidthForViewport = useCallback(() => {
+    const leftWidth = sidebarOpen ? sidebarWidth : 0
+    const available = window.innerWidth - leftWidth - 420
+    return Math.max(MIN_BACKLINKS_WIDTH, Math.min(MAX_BACKLINKS_WIDTH, available))
+  }, [sidebarOpen, sidebarWidth])
+
   const startBacklinksResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startX = event.clientX
     const startWidth = backlinksWidth
+    let lastWidth = backlinksWidth
 
     const handleMove = (moveEvent: PointerEvent) => {
-      const nextWidth = Math.min(420, Math.max(260, startWidth + startX - moveEvent.clientX))
-      setBacklinksWidth(nextWidth)
+      const maxWidth = maxBacklinksWidthForViewport()
+      lastWidth = clampPanelWidth(
+        startWidth + startX - moveEvent.clientX,
+        MIN_BACKLINKS_WIDTH,
+        maxWidth,
+        DEFAULT_BACKLINKS_WIDTH
+      )
+      setBacklinksWidth(lastWidth)
     }
 
     const handleUp = () => {
@@ -117,13 +161,20 @@ export default function WorkspacePage() {
       window.removeEventListener('pointerup', handleUp)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      localStorage.setItem(PANEL_PREFERENCE_KEYS.backlinksWidth, String(lastWidth))
     }
 
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
-  }, [backlinksWidth])
+  }, [backlinksWidth, maxBacklinksWidthForViewport])
+
+  const resetBacklinksWidth = useCallback(() => {
+    const width = Math.min(DEFAULT_BACKLINKS_WIDTH, maxBacklinksWidthForViewport())
+    setBacklinksWidth(width)
+    localStorage.setItem(PANEL_PREFERENCE_KEYS.backlinksWidth, String(width))
+  }, [maxBacklinksWidthForViewport])
 
   if (!isHydrated) {
     return (
@@ -135,6 +186,7 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
+      <PanelPreferenceRuntime />
       {!focusMode && <Toolbar onOpenFolder={openFolder} editorRef={editorRef} />}
 
       {focusMode && (
@@ -209,13 +261,13 @@ export default function WorkspacePage() {
             <div
               className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none"
               onPointerDown={startBacklinksResize}
-              onDoubleClick={() => setBacklinksWidth(304)}
+              onDoubleClick={resetBacklinksWidth}
               title={language === 'zh' ? '拖动调整宽度，双击恢复默认' : 'Drag to resize, double-click to reset'}
               aria-label={language === 'zh' ? '调整链接检查器宽度' : 'Resize link inspector'}
             >
               <div className="mx-auto h-full w-px bg-transparent transition-colors hover:bg-primary/40" />
             </div>
-            <BacklinksPanel onClose={() => setBacklinksOpen(false)} />
+            <BacklinksPanel onClose={() => setBacklinksOpenWithPreference(false)} />
           </div>
         )}
 
@@ -224,7 +276,7 @@ export default function WorkspacePage() {
             variant="outline"
             size="icon"
             className="absolute right-2 top-2 z-20 h-7 w-7 rounded-lg border-border/80 bg-background/85 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
-            onClick={() => setBacklinksOpen(true)}
+            onClick={() => setBacklinksOpenWithPreference(true)}
             title={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
             aria-label={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
           >
