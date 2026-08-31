@@ -49,6 +49,7 @@ function restoreScrollProgress(selector: string, progress: number) {
 export default function WorkspacePage() {
   const editorRef = useRef<TyporaEditorRef>(null)
   const [backlinksOpen, setBacklinksOpen] = useState(false)
+  const [backlinksWidth, setBacklinksWidth] = useState(304)
   const [sourceMode, setSourceMode] = useState(false)
   const isHydrated = useSyncExternalStore(
     subscribeHydration,
@@ -102,6 +103,28 @@ export default function WorkspacePage() {
     updateCurrentFileContent(nextContent)
   }, [updateCurrentFileContent])
 
+  const handleBacklinksResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = backlinksWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      setBacklinksWidth(Math.min(420, Math.max(260, startWidth + startX - moveEvent.clientX)))
+    }
+
+    const handleUp = () => {
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
+
   if (!isHydrated) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
@@ -126,24 +149,25 @@ export default function WorkspacePage() {
 
       <SearchDialog />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         {sidebarOpen && !focusMode && <Sidebar />}
 
         {!sidebarOpen && !focusMode && (
-          <div className="absolute left-0 top-14 z-10">
+          <div className="absolute left-2 top-2 z-20">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-none rounded-r-lg border-r border-y border-border bg-background shadow-sm"
+              className="h-8 w-8 rounded-lg border border-border/70 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-accent hover:text-foreground"
               onClick={toggleSidebar}
-              aria-label={language === 'zh' ? '打开侧边栏' : 'Open sidebar'}
+              title={language === 'zh' ? '打开资源管理器' : 'Open explorer'}
+              aria-label={language === 'zh' ? '打开资源管理器' : 'Open explorer'}
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
           </div>
         )}
 
-        <main className={`flex flex-1 flex-col overflow-hidden ${!sidebarOpen && !focusMode ? 'ml-10' : ''}`}>
+        <main className={`flex min-w-0 flex-1 flex-col overflow-hidden ${!sidebarOpen && !focusMode ? 'ml-10' : ''}`}>
           {currentFile ? (
             currentFile.fileType === 'excalidraw' ? (
               <ExcalidrawEditor initialData={currentFile.excalidrawData} />
@@ -196,20 +220,31 @@ export default function WorkspacePage() {
         </main>
 
         {backlinksOpen && !focusMode && isTextLikeFile && (
-          <div className="w-64 shrink-0 border-l border-border bg-sidebar">
+          <div
+            className="relative shrink-0 border-l border-sidebar-border/80 bg-sidebar/95 shadow-[-12px_0_28px_-28px_rgba(0,0,0,0.45)]"
+            style={{ width: backlinksWidth }}
+          >
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={language === 'zh' ? '调整右侧栏宽度' : 'Resize right sidebar'}
+              className="absolute inset-y-0 left-[-2px] z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/20 active:bg-primary/30"
+              onPointerDown={handleBacklinksResizeStart}
+              onDoubleClick={() => setBacklinksWidth(304)}
+            />
             <BacklinksPanel onClose={() => setBacklinksOpen(false)} />
           </div>
         )}
 
         {!backlinksOpen && !focusMode && isTextLikeFile && (
-          <div className="absolute right-0 top-14 z-10">
+          <div className="absolute right-2 top-2 z-20">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-none rounded-l-lg border-l border-y border-border bg-background shadow-sm"
+              className="h-8 w-8 rounded-lg border border-border/70 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-accent hover:text-foreground"
               onClick={() => setBacklinksOpen(true)}
-              title={language === 'zh' ? '双向链接' : 'Backlinks'}
-              aria-label={language === 'zh' ? '打开双向链接' : 'Open backlinks'}
+              title={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
+              aria-label={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
             >
               <PanelRight className="h-4 w-4" />
             </Button>
