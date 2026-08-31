@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import dynamic from 'next/dynamic'
-import { Code2, PanelLeft, PanelRight } from 'lucide-react'
+import { Code2, PanelRight } from 'lucide-react'
 import { TyporaEditor, TyporaEditorRef } from '@/components/editor/TyporaEditor'
 import { Sidebar } from '@/components/editor/Sidebar'
 import { Toolbar } from '@/components/editor/Toolbar'
@@ -60,7 +60,6 @@ export default function WorkspacePage() {
   const content = useEditorStore(state => state.content)
   const currentFile = useEditorStore(state => state.currentFile)
   const sidebarOpen = useEditorStore(state => state.sidebarOpen)
-  const toggleSidebar = useEditorStore(state => state.toggleSidebar)
   const updateCurrentFileContent = useEditorStore(state => state.updateCurrentFileContent)
   const focusMode = useEditorStore(state => state.focusMode)
   const toggleFocusMode = useEditorStore(state => state.toggleFocusMode)
@@ -103,27 +102,28 @@ export default function WorkspacePage() {
     updateCurrentFileContent(nextContent)
   }, [updateCurrentFileContent])
 
-  const handleBacklinksResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+  const startBacklinksResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startX = event.clientX
     const startWidth = backlinksWidth
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
 
     const handleMove = (moveEvent: PointerEvent) => {
-      setBacklinksWidth(Math.min(420, Math.max(260, startWidth + startX - moveEvent.clientX)))
+      const nextWidth = Math.min(420, Math.max(260, startWidth + startX - moveEvent.clientX))
+      setBacklinksWidth(nextWidth)
     }
 
     const handleUp = () => {
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
     }
 
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
-  }
+  }, [backlinksWidth])
 
   if (!isHydrated) {
     return (
@@ -152,22 +152,7 @@ export default function WorkspacePage() {
       <div className="relative flex flex-1 overflow-hidden">
         {sidebarOpen && !focusMode && <Sidebar />}
 
-        {!sidebarOpen && !focusMode && (
-          <div className="absolute left-2 top-2 z-20">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-lg border border-border/70 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-accent hover:text-foreground"
-              onClick={toggleSidebar}
-              title={language === 'zh' ? '打开资源管理器' : 'Open explorer'}
-              aria-label={language === 'zh' ? '打开资源管理器' : 'Open explorer'}
-            >
-              <PanelLeft className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-
-        <main className={`flex min-w-0 flex-1 flex-col overflow-hidden ${!sidebarOpen && !focusMode ? 'ml-10' : ''}`}>
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {currentFile ? (
             currentFile.fileType === 'excalidraw' ? (
               <ExcalidrawEditor initialData={currentFile.excalidrawData} />
@@ -220,35 +205,31 @@ export default function WorkspacePage() {
         </main>
 
         {backlinksOpen && !focusMode && isTextLikeFile && (
-          <div
-            className="relative shrink-0 border-l border-sidebar-border/80 bg-sidebar/95 shadow-[-12px_0_28px_-28px_rgba(0,0,0,0.45)]"
-            style={{ width: backlinksWidth }}
-          >
+          <div className="relative shrink-0 border-l border-sidebar-border bg-sidebar" style={{ width: backlinksWidth }}>
             <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={language === 'zh' ? '调整右侧栏宽度' : 'Resize right sidebar'}
-              className="absolute inset-y-0 left-[-2px] z-20 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/20 active:bg-primary/30"
-              onPointerDown={handleBacklinksResizeStart}
+              className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize touch-none"
+              onPointerDown={startBacklinksResize}
               onDoubleClick={() => setBacklinksWidth(304)}
-            />
+              title={language === 'zh' ? '拖动调整宽度，双击恢复默认' : 'Drag to resize, double-click to reset'}
+              aria-label={language === 'zh' ? '调整链接检查器宽度' : 'Resize link inspector'}
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors hover:bg-primary/40" />
+            </div>
             <BacklinksPanel onClose={() => setBacklinksOpen(false)} />
           </div>
         )}
 
         {!backlinksOpen && !focusMode && isTextLikeFile && (
-          <div className="absolute right-2 top-2 z-20">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-lg border border-border/70 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-accent hover:text-foreground"
-              onClick={() => setBacklinksOpen(true)}
-              title={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
-              aria-label={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
-            >
-              <PanelRight className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="absolute right-2 top-2 z-20 h-7 w-7 rounded-lg border-border/80 bg-background/85 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
+            onClick={() => setBacklinksOpen(true)}
+            title={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
+            aria-label={language === 'zh' ? '打开链接检查器' : 'Open link inspector'}
+          >
+            <PanelRight className="h-3.5 w-3.5" />
+          </Button>
         )}
       </div>
 
