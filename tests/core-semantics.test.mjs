@@ -8,6 +8,11 @@ import {
   rewriteWikiLinksForFileRename,
 } from '../src/lib/wiki-links.ts'
 import { basenameOf, isValidEntryName, parentPathOf } from '../src/lib/file-system.ts'
+import {
+  clampPanelWidth,
+  parseStoredBoolean,
+  parseStoredPanelWidth,
+} from '../src/lib/panel-preferences.ts'
 
 test('Markdown parser keeps semantic multiline blocks intact', () => {
   const source = [
@@ -95,4 +100,19 @@ test('Workspace path helpers preserve legal path spaces and validate new names',
   assert.equal(isValidEntryName('..'), false)
   assert.equal(isValidEntryName('folder/note.md'), false)
   assert.equal(isValidEntryName('folder\\note.md'), false)
+})
+
+test('Panel preference helpers clamp corrupt or out-of-range stored values', () => {
+  assert.equal(clampPanelWidth(350.4, 200, 420, 260), 350)
+  assert.equal(clampPanelWidth(999, 200, 420, 260), 420)
+  assert.equal(clampPanelWidth(Number.NaN, 200, 420, 260), 260)
+
+  assert.equal(parseStoredPanelWidth('180', 200, 420, 260), 200)
+  assert.equal(parseStoredPanelWidth('380', 200, 420, 260), 380)
+  assert.equal(parseStoredPanelWidth('not-a-number', 200, 420, 260), 260)
+  assert.equal(parseStoredPanelWidth(null, 200, 420, 260), 260)
+
+  assert.equal(parseStoredBoolean('true', false), true)
+  assert.equal(parseStoredBoolean('false', true), false)
+  assert.equal(parseStoredBoolean('unknown', true), true)
 })
