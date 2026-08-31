@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -10,6 +10,7 @@ import {
   Folder,
   FolderOpen,
   Image as ImageIcon,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -86,6 +87,26 @@ async function createEntryWithFeedback(
   }
   toast.success(language === 'zh' ? `已创建 ${name}` : `Created ${name}`)
   return true
+}
+
+function countTree(nodes: FileNode[]) {
+  return nodes.reduce(
+    (summary, node) => {
+      summary.total += 1
+      if (node.type === 'folder') summary.folders += 1
+      else summary.files += 1
+      if (node.isModified) summary.modified += 1
+      if (node.children?.length) {
+        const nested = countTree(node.children)
+        summary.total += nested.total
+        summary.files += nested.files
+        summary.folders += nested.folders
+        summary.modified += nested.modified
+      }
+      return summary
+    },
+    { total: 0, files: 0, folders: 0, modified: 0 }
+  )
 }
 
 function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
@@ -169,20 +190,27 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
         <ContextMenuTrigger>
           <div
             onClick={handleClick}
-            className={`group flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1.5 transition-colors duration-150 hover:bg-accent/50 ${isSelected ? 'bg-accent text-accent-foreground' : ''}`}
-            style={{ paddingLeft: `${depth * 16 + 8}px` }}
+            className={`group relative mx-1 flex h-7 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-sidebar-foreground outline-none transition-colors duration-100 before:absolute before:bottom-1 before:left-0 before:top-1 before:w-0.5 before:rounded-full before:bg-primary before:opacity-0 ${
+              isSelected
+                ? 'bg-sidebar-accent/80 font-medium before:opacity-100'
+                : 'hover:bg-sidebar-accent/45'
+            }`}
+            style={{ paddingLeft: `${depth * 14 + 7}px` }}
+            title={node.path}
           >
-            {isFolder && (
-              <span className="flex h-4 w-4 items-center justify-center text-muted-foreground">
-                {hasChildren ? (isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />) : null}
-              </span>
-            )}
+            <span className="flex h-4 w-3.5 shrink-0 items-center justify-center text-muted-foreground/80">
+              {isFolder && hasChildren
+                ? (isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />)
+                : null}
+            </span>
 
-            {!isFolder && isExcalidraw && <Pencil className="h-4 w-4 shrink-0 text-purple-500" />}
-            {!isFolder && isImage && <ImageIcon className="h-4 w-4 shrink-0 text-emerald-500" />}
-            {!isFolder && !isExcalidraw && !isImage && isText && <FileText className="h-4 w-4 shrink-0 text-blue-500" />}
-            {!isFolder && !isExcalidraw && !isImage && !isText && <File className="h-4 w-4 shrink-0 text-muted-foreground" />}
-            {isFolder && (isOpen ? <FolderOpen className="h-4 w-4 shrink-0 text-amber-500" /> : <Folder className="h-4 w-4 shrink-0 text-amber-500" />)}
+            {!isFolder && isExcalidraw && <Pencil className="h-3.5 w-3.5 shrink-0 text-violet-500/90" />}
+            {!isFolder && isImage && <ImageIcon className="h-3.5 w-3.5 shrink-0 text-emerald-500/90" />}
+            {!isFolder && !isExcalidraw && !isImage && isText && <FileText className="h-3.5 w-3.5 shrink-0 text-sky-500/90" />}
+            {!isFolder && !isExcalidraw && !isImage && !isText && <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+            {isFolder && (isOpen
+              ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-500/90" />
+              : <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500/90" />)}
 
             {isRenaming ? (
               <Input
@@ -196,14 +224,19 @@ function FileTreeItem({ node, depth, language, t }: FileTreeItemProps) {
                     setIsRenaming(false)
                   }
                 }}
-                className="h-5 px-1 py-0 text-xs"
+                className="h-5 min-w-0 flex-1 rounded-sm px-1 py-0 text-xs shadow-none"
                 autoFocus
                 onClick={event => event.stopPropagation()}
               />
             ) : (
               <>
-                <span className="flex-1 truncate text-sm">{node.name}</span>
-                {isModified && <span className="h-2 w-2 shrink-0 rounded-full bg-orange-500" />}
+                <span className="min-w-0 flex-1 truncate text-[13px] leading-none">{node.name}</span>
+                {isModified && (
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500"
+                    title={language === 'zh' ? '未保存' : 'Unsaved'}
+                  />
+                )}
               </>
             )}
           </div>
@@ -257,6 +290,7 @@ export function Sidebar() {
   const [showNewFileDialog, setShowNewFileDialog] = useState(false)
   const [newFileDialogType, setNewFileDialogType] = useState<'markdown' | 'excalidraw'>('markdown')
   const [newFileName, setNewFileName] = useState('')
+  const summary = useMemo(() => countTree(files), [files])
 
   const handleNewMarkdown = () => {
     setNewFileDialogType('markdown')
@@ -291,39 +325,68 @@ export function Sidebar() {
 
   return (
     <>
-      <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar" style={{ width: sidebarWidth }}>
-        <div className="border-b border-sidebar-border p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="truncate text-sm font-semibold text-sidebar-foreground">{rootFolderName}</h2>
-          </div>
-
-          <div className="flex flex-wrap gap-1">
+      <aside
+        className="flex h-full shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar/95"
+        style={{ width: sidebarWidth }}
+      >
+        <div className="border-b border-sidebar-border/70 px-3 pb-2.5 pt-3">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              {language === 'zh' ? '资源管理器' : 'Explorer'}
+            </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
-                  <Plus className="mr-1 h-3 w-3" />{language === 'zh' ? '新建' : 'New'}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  title={language === 'zh' ? '新建' : 'New'}
+                  aria-label={language === 'zh' ? '新建' : 'New'}
+                >
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem onClick={handleNewMarkdown}><FileText className="mr-2 h-4 w-4" />Markdown</DropdownMenuItem>
                 <DropdownMenuItem onClick={handleNewExcalidraw}><Pencil className="mr-2 h-4 w-4" />Excalidraw</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleNewFolder()}><Folder className="mr-2 h-4 w-4" />{language === 'zh' ? '文件夹' : 'Folder'}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          <div className="flex items-center gap-2">
+            <FolderOpen className="h-4 w-4 shrink-0 text-amber-500/80" />
+            <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-sidebar-foreground" title={rootFolderName}>
+              {rootFolderName}
+            </h2>
+            <span className="shrink-0 rounded-md bg-sidebar-accent/70 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+              {summary.files}
+            </span>
+          </div>
         </div>
 
-        <div className="sidebar-scrollbar flex-1 overflow-y-auto py-2">
+        <div className="sidebar-scrollbar flex-1 overflow-y-auto py-1.5">
           {files.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-              <p>{t('noFiles')}</p>
-              <p className="mt-1 text-xs">{t('createFileToStart')}</p>
+            <div className="flex h-full min-h-40 flex-col items-center justify-center px-6 text-center text-muted-foreground">
+              <FileText className="mb-2 h-7 w-7 opacity-30" />
+              <p className="text-sm">{t('noFiles')}</p>
+              <p className="mt-1 text-xs leading-5 opacity-70">{t('createFileToStart')}</p>
             </div>
           ) : files.map(node => (
             <FileTreeItem key={node.id} node={node} depth={0} language={language} t={t} />
           ))}
         </div>
-      </div>
+
+        <div className="flex h-7 shrink-0 items-center justify-between border-t border-sidebar-border/60 px-3 text-[10px] text-muted-foreground/70">
+          <span>{summary.files} {language === 'zh' ? '文件' : 'files'} · {summary.folders} {language === 'zh' ? '目录' : 'folders'}</span>
+          {summary.modified > 0 && (
+            <span className="flex items-center gap-1 text-orange-500/90">
+              <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+              {summary.modified}
+            </span>
+          )}
+        </div>
+      </aside>
 
       <Dialog open={showNewFileDialog} onOpenChange={setShowNewFileDialog}>
         <DialogContent className="sm:max-w-md">
