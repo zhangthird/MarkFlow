@@ -33,11 +33,20 @@ function resizeSourceTextarea(textarea: HTMLTextAreaElement) {
 }
 
 function sourcePositionAt(text: string, offset: number): SourcePosition {
-  const beforeCursor = text.slice(0, offset)
-  const lastNewline = beforeCursor.lastIndexOf('\n')
+  const safeOffset = Math.max(0, Math.min(offset, text.length))
+  let line = 1
+  let lastNewline = -1
+
+  for (let index = 0; index < safeOffset; index += 1) {
+    if (text.charCodeAt(index) === 10) {
+      line += 1
+      lastNewline = index
+    }
+  }
+
   return {
-    line: beforeCursor.split('\n').length,
-    column: offset - lastNewline,
+    line,
+    column: safeOffset - lastNewline,
   }
 }
 
@@ -58,6 +67,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       () => Array.from({ length: sourceLineCount }, (_, index) => String(index + 1)).join('\n'),
       [sourceLineCount]
     )
+    const sourceGutterWidth = `${Math.max(3, String(sourceLineCount).length + 1)}ch`
 
     const updateSourcePosition = useCallback((textarea: HTMLTextAreaElement) => {
       setSourcePosition(sourcePositionAt(textarea.value, textarea.selectionStart))
@@ -206,11 +216,17 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
             <span className="tabular-nums">Ln {sourcePosition.line}, Col {sourcePosition.column}</span>
           </div>
           <div className="markflow-source-mode-code">
-            <pre className="markflow-source-mode-gutter" aria-hidden="true">{sourceLineNumbers}</pre>
+            <pre
+              className="markflow-source-mode-gutter"
+              style={{ minWidth: sourceGutterWidth }}
+              aria-hidden="true"
+            >
+              {sourceLineNumbers}
+            </pre>
             <div className="markflow-source-mode-editor-pane">
               <div
                 className="markflow-source-mode-current-line"
-                style={{ transform: `translateY(${sourcePosition.line - 1}00%)` }}
+                style={{ transform: `translateY(${(sourcePosition.line - 1) * 100}%)` }}
                 aria-hidden="true"
               />
               <textarea
