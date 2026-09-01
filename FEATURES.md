@@ -89,14 +89,19 @@ Source Mode 与 WYSIWYG 使用同一个 `content`：
 - 同一个 autosave；
 - 同一个 filesystem write pipeline。
 
-当前切换会按滚动比例恢复阅读位置。
+源码视图是正式编辑视图，当前提供：
 
-Source Mode 额外支持：
-
+- 左侧 Markdown source line number gutter；
+- 当前源码行低对比高亮；
+- 实时 `Ln / Col` caret 位置；
+- 关闭 soft wrapping，确保视觉行与 Markdown source line 一一对应；
+- 长行使用横向滚动；
 - Tab 当前行 / 多行缩进；
 - Shift+Tab 当前行 / 多行反向缩进；
 - Bold / Italic / Link 快捷键；
 - Toolbar insertion。
+
+当前 WYSIWYG / Source Mode 切换会按滚动比例恢复阅读位置；exact source-position / selection mapping 仍属于后续增强。
 
 ## 3. Markdown 渲染
 
