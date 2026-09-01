@@ -33,13 +33,15 @@ MarkFlow 是一个 **local-first 的 Markdown 知识工作区**。它直接工�
 
 ### Source Code Mode
 
-MarkFlow 同时保留显式的整篇 Markdown 源码模式：
+MarkFlow 同时保留显式的整篇 Markdown 源码模式，而且它是正式编辑视图，不是格式化操作触发的 fallback：
 
 - `Ctrl/Cmd + /` 或状态栏按钮切换 WYSIWYG / Source Mode。
 - 两种视图共享同一份 `content`、undo/redo、dirty state、自动保存和文件写入流程。
+- 源码视图提供行号、当前行高亮以及实时 `Ln / Col` 光标位置。
+- Source Mode 关闭软换行，视觉行与 Markdown source line 一一对应；长行使用横向滚动。
 - 切换时按当前滚动比例尽量保持阅读位置。
 - Source Mode 支持 `Tab` 多行缩进和 `Shift+Tab` 反向缩进。
-- 格式快捷键和 Toolbar 插入仍然可用。
+- `Ctrl/Cmd+B`、`Ctrl/Cmd+I`、`Ctrl/Cmd+K` 与 Toolbar 插入仍然可用。
 
 ### Markdown / GFM / KaTeX / Mermaid
 
@@ -228,7 +230,8 @@ src/
 │   └── editor-polish.css
 ├── components/
 │   ├── workspace/
-│   │   └── WorkspacePage.tsx
+│   │   ├── WorkspacePage.tsx
+│   │   └── PanelPreferenceRuntime.tsx
 │   └── editor/
 │       ├── TyporaEditor.tsx
 │       ├── TyporaEditorCore.tsx
@@ -247,6 +250,7 @@ src/
 ├── lib/
 │   ├── file-system.ts
 │   ├── file-operations.ts
+│   ├── panel-preferences.ts
 │   ├── workspace-loader.ts
 │   ├── workspace-persistence.ts
 │   ├── workspace-refresh.ts

@@ -238,6 +238,8 @@ keyboard/selection     GFM/KaTeX/code/Mermaid
 
 `TyporaEditor.tsx` chooses between block-level WYSIWYG and full-document Source Mode. Both operate on the same `content` and `onChange`; there is no second durable document model.
 
+Source Mode is still a plain Markdown text editing path at the data boundary, even though the UI adds editor affordances such as a line-number gutter, active-line highlight, `Ln / Col`, indentation helpers, and no-wrap source lines. Those affordances must never introduce a separate parsed or serialized document state.
+
 ### TyporaEditorCore
 
 Owns:
@@ -298,7 +300,7 @@ A source-position-aware Markdown AST is preferable to regex-only DOM mutation fo
 
 ## Source Mode
 
-Source Mode is an explicit view, not a fallback triggered by formatting actions.
+Source Mode is an explicit first-class view, not a fallback triggered by formatting actions.
 
 ```text
 same content
@@ -308,7 +310,9 @@ WYSIWYG  Source Mode
 undo / dirty / autosave
 ```
 
-Current switching preserves normalized scroll progress. Exact source-position / selection mapping remains a future improvement.
+The source view deliberately keeps visual rows aligned with actual Markdown source lines by disabling soft wrapping. A lightweight gutter and active-line layer are derived from `content` and textarea selection only; they do not own document state.
+
+Current switching preserves normalized scroll progress. Exact source-position / selection mapping between WYSIWYG and Source Mode remains a future improvement.
 
 ## Wiki Link model
 
