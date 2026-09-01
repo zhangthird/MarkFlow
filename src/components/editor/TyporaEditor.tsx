@@ -5,7 +5,9 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
+  useState,
 } from 'react'
 import {
   TyporaEditor as BlockEditor,
@@ -20,9 +22,23 @@ interface TyporaEditorProps {
   sourceMode?: boolean
 }
 
+interface SourcePosition {
+  line: number
+  column: number
+}
+
 function resizeSourceTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = '0px'
   textarea.style.height = `${Math.max(textarea.scrollHeight, window.innerHeight - 150)}px`
+}
+
+function sourcePositionAt(text: string, offset: number): SourcePosition {
+  const beforeCursor = text.slice(0, offset)
+  const lastNewline = beforeCursor.lastIndexOf('\n')
+  return {
+    line: beforeCursor.split('\n').length,
+    column: offset - lastNewline,
+  }
 }
 
 function removeIndent(line: string) {
@@ -35,11 +51,24 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
   function TyporaEditor({ content, onChange, sourceMode = false }, ref) {
     const blockEditorRef = useRef<TyporaEditorRef>(null)
     const sourceTextareaRef = useRef<HTMLTextAreaElement>(null)
+    const [sourcePosition, setSourcePosition] = useState<SourcePosition>({ line: 1, column: 1 })
+
+    const sourceLineCount = useMemo(() => content.split('\n').length, [content])
+    const sourceLineNumbers = useMemo(
+      () => Array.from({ length: sourceLineCount }, (_, index) => String(index + 1)).join('\n'),
+      [sourceLineCount]
+    )
+
+    const updateSourcePosition = useCallback((textarea: HTMLTextAreaElement) => {
+      setSourcePosition(sourcePositionAt(textarea.value, textarea.selectionStart))
+    }, [])
 
     useEffect(() => {
       if (!sourceMode || !sourceTextareaRef.current) return
-      resizeSourceTextarea(sourceTextareaRef.current)
-    }, [content, sourceMode])
+      const textarea = sourceTextareaRef.current
+      resizeSourceTextarea(textarea)
+      updateSourcePosition(textarea)
+    }, [content, sourceMode, updateSourcePosition])
 
     const wrapSourceSelection = useCallback((before: string, after = '') => {
       const textarea = sourceTextareaRef.current
@@ -59,8 +88,9 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         nextTextarea.focus()
         nextTextarea.setSelectionRange(nextStart, nextEnd)
         resizeSourceTextarea(nextTextarea)
+        updateSourcePosition(nextTextarea)
       })
-    }, [onChange])
+    }, [onChange, updateSourcePosition])
 
     useImperativeHandle(ref, () => ({
       getTextarea: () => sourceMode
@@ -75,6 +105,20 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         else blockEditorRef.current?.insertAtCursor(before, after)
       },
     }), [sourceMode, wrapSourceSelection])
+
+    const restoreSourceSelection = (
+      nextStart: number,
+      nextEnd = nextStart
+    ) => {
+      requestAnimationFrame(() => {
+        const nextTextarea = sourceTextareaRef.current
+        if (!nextTextarea) return
+        nextTextarea.focus()
+        nextTextarea.setSelectionRange(nextStart, nextEnd)
+        resizeSourceTextarea(nextTextarea)
+        updateSourcePosition(nextTextarea)
+      })
+    }
 
     const handleSourceKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = event.currentTarget
@@ -118,13 +162,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
           const nextContent = value.slice(0, lineStart) + result.line + value.slice(lineEnd)
           const nextCursor = Math.max(lineStart, start - result.removed)
           onChange(nextContent)
-          requestAnimationFrame(() => {
-            const nextTextarea = sourceTextareaRef.current
-            if (!nextTextarea) return
-            nextTextarea.focus()
-            nextTextarea.setSelectionRange(nextCursor, nextCursor)
-            resizeSourceTextarea(nextTextarea)
-          })
+          restoreSourceSelection(nextCursor)
           return
         }
 
@@ -138,26 +176,14 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
         const nextStart = Math.max(lineStart, start - results[0].removed)
         const nextEnd = Math.max(nextStart, end - removedTotal)
         onChange(nextContent)
-        requestAnimationFrame(() => {
-          const nextTextarea = sourceTextareaRef.current
-          if (!nextTextarea) return
-          nextTextarea.focus()
-          nextTextarea.setSelectionRange(nextStart, nextEnd)
-          resizeSourceTextarea(nextTextarea)
-        })
+        restoreSourceSelection(nextStart, nextEnd)
         return
       }
 
       if (start === end) {
         const nextContent = value.slice(0, start) + '  ' + value.slice(end)
         onChange(nextContent)
-        requestAnimationFrame(() => {
-          const nextTextarea = sourceTextareaRef.current
-          if (!nextTextarea) return
-          nextTextarea.focus()
-          nextTextarea.setSelectionRange(start + 2, start + 2)
-          resizeSourceTextarea(nextTextarea)
-        })
+        restoreSourceSelection(start + 2)
         return
       }
 
@@ -165,14 +191,7 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
       const indented = selectedLines.map(line => `  ${line}`).join('\n')
       const nextContent = value.slice(0, lineStart) + indented + value.slice(end)
       onChange(nextContent)
-
-      requestAnimationFrame(() => {
-        const nextTextarea = sourceTextareaRef.current
-        if (!nextTextarea) return
-        nextTextarea.focus()
-        nextTextarea.setSelectionRange(start + 2, end + selectedLines.length * 2)
-        resizeSourceTextarea(nextTextarea)
-      })
+      restoreSourceSelection(start + 2, end + selectedLines.length * 2)
     }
 
     if (!sourceMode) {
@@ -182,19 +201,36 @@ export const TyporaEditor = forwardRef<TyporaEditorRef, TyporaEditorProps>(
     return (
       <div className="editor-scrollbar markflow-source-mode h-full flex-1 overflow-y-auto">
         <div className="markflow-source-mode-shell">
-          <textarea
-            ref={sourceTextareaRef}
-            value={content}
-            onChange={event => {
-              onChange(event.target.value)
-              requestAnimationFrame(() => resizeSourceTextarea(event.target))
-            }}
-            onKeyDown={handleSourceKeyDown}
-            className="markflow-source-mode-editor"
-            spellCheck={false}
-            autoFocus
-            aria-label="Markdown source code"
-          />
+          <div className="markflow-source-mode-meta" aria-hidden="true">
+            <span>Markdown Source</span>
+            <span className="tabular-nums">Ln {sourcePosition.line}, Col {sourcePosition.column}</span>
+          </div>
+          <div className="markflow-source-mode-code">
+            <pre className="markflow-source-mode-gutter" aria-hidden="true">{sourceLineNumbers}</pre>
+            <div className="markflow-source-mode-editor-pane">
+              <div
+                className="markflow-source-mode-current-line"
+                style={{ transform: `translateY(${sourcePosition.line - 1}00%)` }}
+                aria-hidden="true"
+              />
+              <textarea
+                ref={sourceTextareaRef}
+                value={content}
+                onChange={event => {
+                  onChange(event.target.value)
+                  updateSourcePosition(event.target)
+                  requestAnimationFrame(() => resizeSourceTextarea(event.target))
+                }}
+                onKeyDown={handleSourceKeyDown}
+                onSelect={event => updateSourcePosition(event.currentTarget)}
+                className="markflow-source-mode-editor"
+                spellCheck={false}
+                wrap="off"
+                autoFocus
+                aria-label="Markdown source code"
+              />
+            </div>
+          </div>
         </div>
       </div>
     )
